@@ -1,0 +1,17 @@
+{
+  "name": "한국관광 100선 스탬프",
+  "short_name": "관광100선",
+  "description": "2025-2026 한국관광 100선 방문 기록",
+  "lang": "ko",
+  "start_url": "./#/list",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#fbf6ef",
+  "theme_color": "#d9622b",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
