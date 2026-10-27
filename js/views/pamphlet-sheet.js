@@ -2,6 +2,7 @@ import { state } from '../store.js';
 import { getPicks } from '../db.js';
 import { buildPamphlet } from '../pamphlet.js';
 import { esc, today, toast, downloadFile, storage } from '../util.js';
+import { enrichPlaces } from '../enrich.js';
 
 const MEMBERS_KEY = 'korea100.members';
 
@@ -40,6 +41,10 @@ export function openPamphletSheet(course) {
       <label class="radio">
         <input type="checkbox" name="picks" checked> 내 맛집·숙소 메모 포함
       </label>
+      <label class="radio">
+        <input type="checkbox" name="photos" checked> 관광 포인트 사진·설명 넣기 (인터넷 필요)
+      </label>
+      <p class="hint small" id="pm-status" aria-live="polite"></p>
 
       <div class="row">
         <button type="button" class="btn ghost" data-act="preview">미리보기</button>
@@ -55,6 +60,30 @@ export function openPamphletSheet(course) {
 
   const form = overlay.querySelector('form');
   const urls = [];
+  const status = form.querySelector('#pm-status');
+
+  // 시트를 열자마자 사진·설명을 미리 찾아 둔다(공유 버튼을 누른 뒤 오래 기다리면 공유가 막힐 수 있다)
+  const stops = course.days.flat().map((s) => ({ ...state.placeById.get(s.id), guide: state.guide[s.id] }));
+  let info = null;
+  let enrichJob = null;
+  function startEnrich() {
+    if (enrichJob) return enrichJob;
+    status.textContent = '사진·설명을 찾는 중…';
+    enrichJob = enrichPlaces(stops, (d, t) => { status.textContent = `사진·설명을 찾는 중… ${d}/${t}`; })
+      .then((r) => {
+        info = r;
+        const n = Object.values(r).reduce((s, x) => s + (x.place ? 1 : 0) + Object.keys(x.points).length, 0);
+        status.textContent = n ? `사진·설명 ${n}건을 찾았어요. 출처가 함께 표시돼요.` : '찾은 사진·설명이 없어요. 이름만 넣을게요.';
+      })
+      .catch(() => { enrichJob = null; status.textContent = '사진·설명을 불러오지 못했어요. 이름만 넣을게요.'; });
+    return enrichJob;
+  }
+  const photosBox = form.querySelector('[name="photos"]');
+  if (photosBox.checked) startEnrich();
+  photosBox.addEventListener('change', () => {
+    if (photosBox.checked) startEnrich();
+    else status.textContent = '';
+  });
 
   function close() {
     overlay.classList.remove('open');
@@ -68,11 +97,14 @@ export function openPamphletSheet(course) {
     const members = String(fd.get('members')).split(',').map((m) => m.trim()).filter(Boolean);
     storage.set(MEMBERS_KEY, members.join(', '));
     const includePicks = fd.get('picks') === 'on';
+    const withPhotos = fd.get('photos') === 'on';
+    if (withPhotos && !info) await Promise.race([startEnrich(), new Promise((r) => setTimeout(r, 4000))]);
     const days = await Promise.all(course.days.map((d) => Promise.all(d.map(async (s) => ({
       ...state.placeById.get(s.id),
       leg: s.leg || 0,
       guide: state.guide[s.id],
       picks: includePicks ? await getPicks(s.id) : [],
+      info: withPhotos ? info?.[s.id] : null,
     })))));
     const title = String(fd.get('title')).trim() || course.title;
     const html = buildPamphlet({

@@ -40,31 +40,57 @@ function checklist({ season, mode, days }) {
   return [...items, ...(SEASON_ITEMS[season] || [])];
 }
 
+// 외부 자료(위키백과·한국관광공사)에서 가져온 사진·설명. 출처를 꼭 붙인다
+const img = (src, alt, cls) => (/^https:///i.test(src || '')
+  ? `<img class="${cls}" src="${esc(src)}" alt="${esc(alt)}" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : '');
+const credit = (r) => (r.url && /^https:///i.test(r.url)
+  ? `<a class="credit" href="${esc(r.url)}" target="_blank" rel="noopener">출처: ${esc(r.source)}</a>`
+  : `<span class="credit">출처: ${esc(r.source)}</span>`);
+
+function pointItem(p, r) {
+  if (!r) return `<li class="pt"><b>${esc(p)}</b></li>`;
+  return `
+    <li class="pt rich">
+      ${img(r.image, p, 'pt-img')}
+      <div><b>${esc(p)}</b>${r.text ? `<p>${esc(r.text)}</p>` : ''}${credit(r)}</div>
+    </li>`;
+}
+
 function placeCard(s, { season, includePicks }) {
   const g = s.guide || {};
   const q = g.q || s.name;
   const area = s.unverified?.includes('sigungu') ? q : s.sigungu;
   const picks = includePicks ? s.picks || [] : [];
   const inSeason = season && g.seasons?.includes(season) && g.seasons.length < 4;
+  const info = s.info || { place: null, points: {} };
+  const hero = info.place;
   return `
     <article class="place">
+      ${hero ? img(hero.image, s.name, 'hero') : ''}
       <h3>${esc(s.name)}</h3>
       <p class="meta">${esc(s.sido)} · ${esc(s.sigungu)}${g.hours ? ` · 약 ${fmtHours(g.hours)}` : ''}${inSeason ? ` <span class="tag">${SEASON_ICON[season]} ${season} 추천</span>` : ''}</p>
+      ${hero?.text ? `<p class="about">${esc(hero.text)} ${credit(hero)}</p>` : ''}
       ${g.points?.length ? `
-        <h4>볼거리</h4>
-        <ul>${g.points.map((p) => `<li>${esc(p)}</li>`).join('')}</ul>` : ''}
+        <h4>주요 관광 포인트</h4>
+        <ul class="pts">${g.points.map((p) => pointItem(p, info.points[p])).join('')}</ul>` : ''}
       ${g.foods?.length ? `
         <h4>꼭 먹어 볼 음식</h4>
         <p class="foods">${g.foods.map((f) => `<a href="${esc(naverMap(`${area} ${f}`))}" target="_blank" rel="noopener">${esc(f)}</a>`).join('')}</p>` : ''}
+      <h4>맛집·숙소</h4>
       ${picks.length ? `
-        <h4>우리가 찜한 곳</h4>
+        <p class="sub">우리가 찜한 곳</p>
         <ul class="picks">${picks.map((p) => `
           <li><b>${p.type === 'stay' ? '숙소' : '맛집'}</b> ${p.link && /^https?:\/\//i.test(p.link) ? `<a href="${esc(p.link)}" target="_blank" rel="noopener">${esc(p.name)}</a>` : esc(p.name)}${p.note ? ` <span>— ${esc(p.note)}</span>` : ''}</li>`).join('')}</ul>` : ''}
       <p class="links">
-        <a href="${esc(naverMap(q))}" target="_blank" rel="noopener">📍 위치</a>
-        <a href="${esc(naverMap(`${q} 맛집`))}" target="_blank" rel="noopener">🍽 맛집</a>
-        <a href="${esc(naverMap(`${q} 숙소`))}" target="_blank" rel="noopener">🛏 숙소</a>
-        <a href="${esc(kakaoMap(q))}" target="_blank" rel="noopener">카카오맵</a>
+        <a class="strong" href="${esc(naverMap(`${q} 맛집`))}" target="_blank" rel="noopener">🍽 근처 맛집 (네이버)</a>
+        <a class="strong" href="${esc(naverMap(`${q} 숙소`))}" target="_blank" rel="noopener">🛏 근처 숙소 (네이버)</a>
+        <a href="${esc(kakaoMap(`${q} 맛집`))}" target="_blank" rel="noopener">카카오 맛집</a>
+        <a href="${esc(kakaoMap(`${q} 숙소`))}" target="_blank" rel="noopener">카카오 숙소</a>
+      </p>
+      <p class="tip">평점이 높은 곳은 지도에서 '리뷰 많은순'이나 '별점순'으로 정렬해 고르세요.</p>
+      <p class="links">
+        <a href="${esc(naverMap(q))}" target="_blank" rel="noopener">📍 위치 (네이버 지도)</a>
+        <a href="${esc(kakaoMap(q))}" target="_blank" rel="noopener">📍 카카오맵</a>
       </p>
     </article>`;
 }
@@ -81,6 +107,9 @@ export function buildPamphlet(spec) {
     : mode === 'ferry' ? '⛴ 여객선 이동'
       : oneWay != null ? `🚗 ${esc(originName || '')} 출발 · 편도 약 ${fmtHours(oneWay)}` : '';
   const made = new Date();
+  const LICENSE = { 위키백과: '한국어 위키백과(CC BY-SA 4.0)', 한국관광공사: '한국관광공사 TourAPI' };
+  const sources = [...new Set(places.flatMap((p) => [p.info?.place, ...Object.values(p.info?.points || {})])
+    .filter(Boolean).map((r) => LICENSE[r.source] || r.source))];
 
   return `<!doctype html>
 <html lang="ko">
@@ -121,7 +150,19 @@ ul { margin:0; padding-left:18px; }
 .picks b { font-size:12px; color:var(--accent); margin-right:4px; }
 .picks span { color:var(--ink2); font-size:14px; }
 .picks a { color:inherit; }
-.links { display:flex; flex-wrap:wrap; gap:6px; margin:14px 0 0; }
+.hero { display:block; width:calc(100% + 36px); margin:-16px -18px 12px; aspect-ratio:16/9; object-fit:cover; border-radius:16px 16px 0 0; background:var(--soft); }
+.about { margin:10px 0 0; font-size:14px; }
+.credit { display:inline-block; font-size:11px; color:var(--ink2); text-decoration:none; }
+a.credit { text-decoration:underline; }
+.pts { list-style:none; padding:0; display:grid; gap:8px; }
+.pt { border-left:3px solid var(--soft); padding-left:10px; }
+.pt.rich { display:flex; gap:10px; align-items:flex-start; border:1px solid var(--line); border-radius:12px; padding:8px; }
+.pt-img { width:88px; height:88px; flex:none; object-fit:cover; border-radius:8px; background:var(--soft); }
+.pt p { margin:2px 0; font-size:13px; color:var(--ink2); }
+.sub { margin:0 0 2px; font-size:12px; color:var(--ink2); }
+.tip { margin:6px 0 0; font-size:12px; color:var(--ink2); }
+.links a.strong { border-color:var(--accent); color:var(--accent); font-weight:700; }
+.links { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0 0; }
 .links a { font-size:13px; text-decoration:none; color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:4px 10px; }
 .empty { color:var(--ink2); background:var(--paper); border:1px dashed var(--line); border-radius:12px; padding:12px 16px; }
 .check { list-style:none; padding:0; display:grid; gap:6px; }
@@ -131,7 +172,7 @@ footer { margin-top:32px; color:var(--ink2); font-size:12px; text-align:center; 
 @media print {
   :root { --bg:#fff; --paper:#fff; --ink:#000; --ink2:#444; --line:#ccc; --soft:#f3e3d6; color-scheme: light; }
   .cover { -webkit-print-color-adjust:exact; print-color-adjust:exact; border-radius:0; }
-  .links { display:none; }
+  .links, .tip { display:none; }
   h2 { break-after:avoid; }
 }
 </style>
@@ -167,6 +208,7 @@ footer { margin-top:32px; color:var(--ink2); font-size:12px; text-align:center; 
   </ul>
 
   <footer>
+    ${sources.length ? `사진·설명 출처: ${sources.join(', ')}. 자동으로 찾은 자료라 실제와 다를 수 있어요.<br>` : ''}
     이동 시간은 대략 추정한 값이에요. 운영 시간·휴무·예약 여부는 방문 전에 확인하세요.<br>
     ${made.getFullYear()}. ${made.getMonth() + 1}. ${made.getDate()}. 한국관광 100선 스탬프 앱에서 만들었어요.
   </footer>

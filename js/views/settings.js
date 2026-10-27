@@ -1,6 +1,7 @@
 import { state, reloadVisits } from '../store.js';
 import { getAllVisits, getAllPhotos, getAllPicks, importData, clearAll } from '../db.js';
 import { esc, blobToDataURL, dataURLToBlob, downloadFile, today, toast, storage } from '../util.js';
+import { TOUR_KEY } from '../enrich.js';
 
 // v2: 맛집·숙소 메모(picks) 추가. v1 백업도 그대로 가져올 수 있다.
 const BACKUP_VERSION = 2;
@@ -80,6 +81,16 @@ export function renderSettings(root) {
     </section>
 
     <section class="panel">
+      <h2>팜플렛 사진·설명</h2>
+      <p class="hint">팜플렛의 관광 포인트 사진·설명은 한국어 위키백과에서 찾아요. 한국관광공사 TourAPI 인증키를 넣으면 공식 사진·소개글을 먼저 써요. 인증키는 공공데이터포털(data.go.kr)에서 '한국관광공사_국문 관광정보 서비스'를 활용 신청하면 무료로 받을 수 있어요.</p>
+      <label class="field">
+        <span>TourAPI 인증키 (선택, 일반 인증키 Decoding)</span>
+        <input type="password" id="tour-key" autocomplete="off" spellcheck="false" value="${esc(storage.get(TOUR_KEY, ''))}">
+      </label>
+      <p class="hint small">인증키는 이 기기에만 저장되고 백업 파일에는 들어가지 않아요.</p>
+    </section>
+
+    <section class="panel">
       <h2>데이터 정보</h2>
       <p><strong>${esc(meta.title || '')}</strong></p>
       <p class="hint">${esc(meta.source || '')}</p>
@@ -103,6 +114,11 @@ export function renderSettings(root) {
       x.setAttribute('aria-checked', x === b);
     });
   }));
+
+  root.querySelector('#tour-key').addEventListener('change', (e) => {
+    storage.set(TOUR_KEY, e.target.value.trim());
+    toast(e.target.value.trim() ? 'TourAPI 인증키를 저장했어요' : 'TourAPI 인증키를 지웠어요');
+  });
 
   root.querySelector('#export').addEventListener('click', () => exportBackup().catch((e) => {
     console.error(e);
