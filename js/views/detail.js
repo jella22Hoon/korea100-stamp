@@ -10,6 +10,48 @@ const PICK_TYPES = { food: '맛집', stay: '숙소' };
 const naverMap = (q) => `https://map.naver.com/p/search/${encodeURIComponent(q)}`;
 const kakaoMap = (q) => `https://map.kakao.com/?q=${encodeURIComponent(q)}`;
 const ext = (href, label, cls = '') => `<a class="maplink ${cls}" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+// 네이버 지도 앱 길찾기. 출발지를 비워 두면 앱이 현재 위치에서 출발하도록 한다.
+// 앱이 없거나 PC면 네이버 지도 웹 검색으로 연다(웹에서 '길찾기'를 누르면 된다).
+function openRoute(mode, place) {
+  const g = state.guide[place.id];
+  const q = g?.q || place.name;
+  const web = naverMap(q);
+  if (!isMobile || !g?.area) {
+    window.open(web, '_blank', 'noopener');
+    return;
+  }
+  const [lat, lng] = g.area;
+  const params = new URLSearchParams({ dlat: lat, dlng: lng, dname: q, appname: location.hostname || 'korea100' });
+  let left = false;
+  const onHide = () => { if (document.hidden) left = true; };
+  document.addEventListener('visibilitychange', onHide);
+  setTimeout(() => {
+    document.removeEventListener('visibilitychange', onHide);
+    if (left || document.hidden) return;
+    // 앱 화면을 떠나지 않도록 새 창으로 열고, 팝업이 막히면 현재 창에서 연다
+    const w = window.open(web, '_blank');
+    if (w) w.opener = null;
+    else location.href = web;
+  }, 1500);
+  location.href = `nmap://route/${mode}?${params}`;
+}
+
+function routeSection(place) {
+  const q = state.guide[place.id]?.q || place.name;
+  return `
+    <section class="panel route">
+      <h2>위치·교통</h2>
+      <p class="hint small route-lead">지도에서 위치를 보거나, 지금 있는 곳에서 가는 길과 시간을 확인해요.</p>
+      ${ext(naverMap(q), '<b>N</b> 네이버 지도에서 위치 보기', 'naver wide')}
+      <div class="mapgrid">
+        <button type="button" class="maplink naver" data-route="public"><span aria-hidden="true">🚌</span> 대중교통으로</button>
+        <button type="button" class="maplink naver" data-route="car"><span aria-hidden="true">🚗</span> 자동차로</button>
+      </div>
+      <p class="hint small">길찾기는 네이버 지도 앱에서 현재 위치를 출발지로 열려요. 목적지는 관광지의 대략적인 위치라서, 넓은 곳은 앱에서 정확한 입구나 주차장으로 바꿔 주세요. 앱이 없으면 네이버 지도 웹이 열려요.</p>
+    </section>`;
+}
 
 function guideSection(place) {
   const g = state.guide[place.id];
@@ -86,6 +128,8 @@ export function renderDetail(root, placeId) {
           <div><dt>위치</dt><dd>${isUnverified(place, 'lat') ? NEED : `${place.lat}, ${place.lng}`}</dd></div>
         </dl>
 
+        ${routeSection(place)}
+
         ${visit ? `
           <section class="visit-card">
             <h2>나의 방문 기록</h2>
@@ -104,6 +148,7 @@ export function renderDetail(root, placeId) {
         ${guideSection(place)}
       </div>`;
 
+    root.querySelectorAll('[data-route]').forEach((b) => b.addEventListener('click', () => openRoute(b.dataset.route, place)));
     root.querySelector('#pick-add').addEventListener('click', () => openPickForm());
     root.querySelector('#pamphlet').addEventListener('click', () => openPamphletSheet({
       title: `${place.name} 여행`,

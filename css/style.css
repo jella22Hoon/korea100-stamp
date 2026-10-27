@@ -240,6 +240,9 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 46px;
   border: 1px solid var(--line); border-radius: 12px; background: var(--surface); font-weight: 600;
 }
+button.maplink { width: 100%; font: inherit; color: inherit; cursor: pointer; }
+.maplink.wide { margin-bottom: 8px; color: var(--ink); }
+.route-lead { margin: -4px 0 10px; }
 .maplink b { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; font-size: 12px; }
 .maplink.naver b { background: #03c75a; color: #fff; }
 .maplink.kakao b { background: #fee500; color: #191600; }
