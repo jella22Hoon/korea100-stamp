@@ -62,7 +62,7 @@ function pointItem(p, d, r) {
 function placeCard(s, { season, includePicks }) {
   const g = s.guide || {};
   const q = g.q || s.name;
-  const area = s.unverified?.includes('sigungu') ? q : s.sigungu;
+  const area = s.unverified?.includes('sigungu') || !s.sigungu ? q : s.sigungu;
   const picks = includePicks ? s.picks || [] : [];
   const inSeason = season && g.seasons?.includes(season) && g.seasons.length < 4;
   const info = s.info || { place: null, points: {} };
@@ -71,8 +71,9 @@ function placeCard(s, { season, includePicks }) {
     <article class="place">
       ${hero ? img(hero.image, s.name, 'hero') : ''}
       <h3>${esc(s.name)}</h3>
-      <p class="meta">${esc(s.sido)} · ${esc(s.sigungu)}${g.hours ? ` · 약 ${fmtHours(g.hours)}` : ''}${inSeason ? ` <span class="tag">${SEASON_ICON[season]} ${season} 추천</span>` : ''}</p>
-      ${hero?.text ? `<p class="about">${esc(hero.text)} ${credit(hero)}</p>` : ''}
+      <p class="meta">${esc(s.sido)}${s.sigungu ? ` · ${esc(s.sigungu)}` : ''}${g.hours ? ` · 약 ${fmtHours(g.hours)}` : ''}${inSeason ? ` <span class="tag">${SEASON_ICON[season]} ${season} 추천</span>` : ''}</p>
+      ${s.custom && s.description ? `<p class="about">${esc(s.description)}</p>`
+        : hero?.text ? `<p class="about">${esc(hero.text)} ${credit(hero)}</p>` : ''}
       ${g.points?.length ? `
         <h4>주요 관광 포인트</h4>
         <ul class="pts">${g.points.map((p) => pointItem(p, g.pointDesc?.[p], info.points[p])).join('')}</ul>` : ''}
@@ -195,7 +196,7 @@ footer { margin-top:32px; color:var(--ink2); font-size:12px; text-align:center; 
 
   <section class="summary">
     <div><b>${days.length > 1 ? `${days.length - 1}박 ${days.length}일` : '당일'}</b><span>일정</span></div>
-    <div><b>${places.length}곳</b><span>한국관광 100선</span></div>
+    <div><b>${places.length}곳</b><span>${places.every((p) => !p.custom) ? '한국관광 100선' : '여행지'}</span></div>
     ${places.some((p) => p.guide?.hours) ? `<div><b>약 ${fmtHours(places.reduce((s, p) => s + (p.guide?.hours || 0), 0))}</b><span>관광 시간 합계</span></div>` : ''}
   </section>
 

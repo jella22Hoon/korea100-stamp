@@ -255,6 +255,31 @@ export function recommend(items, opts) {
   return { results, poolSize: pool.length };
 }
 
+/**
+ * 사용자가 직접 고른 관광지로 일정을 짠다(목록 화면의 '내 여행 일정').
+ * items: [{ id, name, sido, hours, area, island }] → { days, oneWay, mode, tourHours, budget, mixed, title }
+ */
+export function planCourse(items, tripKey, origin) {
+  const trip = TRIPS[tripKey];
+  const withArea = items.filter((it) => it.area).map((it) => ({ ...it, hours: it.hours || 3, acc: access(origin, it) }));
+  if (!withArea.length) return null;
+  const stops = orderStops(withArea, origin);
+  const first = stops.reduce((m, s) => (s.acc.hours < m.acc.hours ? s : m), stops[0]);
+  const oneWay = first.acc.hours;
+  const tourHours = stops.reduce((sum, x) => sum + x.leg + x.hours, 0);
+  return {
+    days: splitDays(stops, trip, oneWay),
+    oneWay,
+    mode: first.acc.mode,
+    tourHours,
+    budget: totalBudget(trip, oneWay),
+    // 섬(제주·울릉)과 육지가 섞이면 이동 시간 추정이 맞지 않는다
+    mixed: new Set(stops.map((x) => x.acc.mode)).size > 1,
+    tooFar: !allowed(trip, first.acc),
+    title: `${regionTitle({ stops })} ${trip.label}`,
+  };
+}
+
 export function fmtHours(h) {
   const total = Math.max(0, Math.round(h * 6) / 6);
   const hh = Math.floor(total);

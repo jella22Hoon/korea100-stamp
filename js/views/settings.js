@@ -1,10 +1,10 @@
-import { state, reloadVisits, refreshPlaceInfo, clearPlaceInfo, checkForUpdate } from '../store.js';
+import { state, reloadVisits, refreshPlaceInfo, clearPlaceInfo, checkForUpdate, importCustomPlaces } from '../store.js';
 import { getAllVisits, getAllPhotos, getAllPicks, importData, clearAll } from '../db.js';
 import { esc, blobToDataURL, dataURLToBlob, downloadFile, today, toast, storage } from '../util.js';
 import { TOUR_KEY } from '../enrich.js';
 
-// v2: 맛집·숙소 메모(picks) 추가. v1 백업도 그대로 가져올 수 있다.
-const BACKUP_VERSION = 2;
+// v2: 맛집·숙소 메모(picks) 추가. v3: 직접 추가한 여행지(customPlaces) 추가. 이전 백업도 그대로 가져올 수 있다.
+const BACKUP_VERSION = 3;
 const THEME_KEY = 'korea100.theme';
 
 export function applyTheme(theme = storage.get(THEME_KEY, 'system')) {
@@ -25,12 +25,13 @@ async function exportBackup() {
     exportedAt: new Date().toISOString(),
     visits,
     picks,
+    customPlaces: state.custom,
     photos: await Promise.all(photos.map(async (p) => ({
       id: p.id, placeId: p.placeId, data: await blobToDataURL(p.blob),
     }))),
   };
   downloadFile(`한국관광100선-백업-${today()}.json`, JSON.stringify(payload));
-  toast(`방문 ${visits.length}곳, 사진 ${photos.length}장, 메모 ${picks.length}개를 내보냈어요`);
+  toast(`방문 ${visits.length}곳, 사진 ${photos.length}장, 메모 ${picks.length}개${state.custom.length ? `, 추가한 여행지 ${state.custom.length}곳` : ''}을 내보냈어요`);
 }
 
 async function restoreBackup(file, mode) {
@@ -43,6 +44,7 @@ async function restoreBackup(file, mode) {
   if (payload?.app !== 'korea100' || !Array.isArray(payload.visits)) {
     throw new Error('이 앱의 백업 파일이 아니에요');
   }
+  if (Array.isArray(payload.customPlaces)) importCustomPlaces(payload.customPlaces, mode);
   const visits = payload.visits.filter((v) => v && state.placeById.has(v.placeId));
   const photos = await Promise.all((payload.photos || []).map(async (p) => ({
     id: p.id, placeId: p.placeId, blob: await dataURLToBlob(p.data),
@@ -90,7 +92,7 @@ export function renderSettings(root) {
       </ul>
       <button type="button" class="btn" id="check-update">앱 새 버전 확인</button>
       <button type="button" class="btn primary" id="refresh-info">관광지 정보 새로 받기</button>
-      <p class="hint small" id="refresh-status" aria-live="polite">100곳의 설명·사진·좌표를 위키백과(또는 TourAPI)에서 받아 이 기기에 저장해요. 1~2분 걸리고, 원할 때만 받아요.</p>
+      <p class="hint small" id="refresh-status" aria-live="polite">100곳(과 추가한 여행지)의 설명·사진·좌표를 위키백과(또는 TourAPI)에서 받아 이 기기에 저장해요. 1~2분 걸리고, 원할 때만 받아요.</p>
       ${state.info.updatedAt ? '<button type="button" class="btn ghost small" id="clear-info">받은 정보 지우기</button>' : ''}
     </section>
 
@@ -225,7 +227,7 @@ export function renderSettings(root) {
   });
 
   root.querySelector('#reset').addEventListener('click', async () => {
-    if (!confirm('모든 방문 기록, 사진, 맛집·숙소 메모를 삭제할까요? 되돌릴 수 없어요.')) return;
+    if (!confirm('모든 방문 기록, 사진, 맛집·숙소 메모를 삭제할까요? 되돌릴 수 없어요. (추가한 여행지 목록은 남아요)')) return;
     await clearAll();
     await reloadVisits();
     toast('모든 기록을 삭제했어요');

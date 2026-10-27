@@ -458,3 +458,39 @@ button.maplink { width: 100%; font: inherit; color: inherit; cursor: pointer; }
 .panel.update .btn.small { width: auto; }
 .info-photo { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 16px; margin: 0 0 12px; background: var(--accent-soft); }
 .info-src { display: inline-block; font-size: 12px; color: var(--ink-2); }
+
+/* ── 내 여행 일정(목록) ── */
+.plan .seg { margin: 6px 0 10px; }
+.plan-origin { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--ink-2); font-weight: 600; margin-bottom: 8px; }
+.plan-origin select { flex: 1; min-height: 38px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); padding: 0 10px; font-size: 16px; color: var(--ink); }
+.plan-meta { font-size: 13px; color: var(--ink-2); }
+.plan-days { list-style: none; margin: 0 0 6px; padding: 0; display: grid; gap: 8px; }
+.plan-days li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.plan-days b { font-size: 13px; color: var(--accent); min-width: 44px; }
+.plan-stop { display: inline-flex; align-items: center; gap: 2px; background: var(--surface-2); border-radius: 999px; padding: 3px 4px 3px 10px; font-size: 14px; word-break: keep-all; }
+.plan-stop button { border: 0; background: none; color: var(--ink-2); width: 24px; height: 24px; border-radius: 50%; cursor: pointer; font-size: 12px; }
+.plan .row { margin-top: 10px; }
+.plan .btn[disabled] { opacity: .45; cursor: default; }
+.plan-bar {
+  position: sticky; bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 10px); z-index: 20;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px;
+  background: var(--ink); color: var(--bg); border-radius: 14px; padding: 8px 8px 8px 16px; box-shadow: var(--shadow);
+}
+.plan-bar[hidden] { display: none; }
+button.card { width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.card.pickable { opacity: 1; filter: none; }
+.card.picked { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
+.card.picked .card-num { background: var(--accent); color: var(--accent-ink); }
+.add-place { width: 100%; margin-top: 14px; border-style: dashed; color: var(--ink-2); }
+
+/* ── 추가한 여행지 ── */
+.hero-tools { display: flex; gap: 8px; margin-top: 10px; }
+.detail-actions .pamphlet-btn { margin-top: 0; }
+.detail-actions { margin-top: 14px; }
+.sheet .row .field { flex: 1; margin-bottom: 0; }
+.sheet .row:has(.field) { margin: 0 0 14px; }
+.field select { width: 100%; min-height: 44px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); padding: 0 10px; font-size: 16px; color: var(--ink); }
+.field .row { margin-top: 0; }
+.pf-results { list-style: none; margin: 4px 0; padding: 0; display: grid; gap: 6px; }
+.pf-results button { width: 100%; text-align: left; border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 8px 10px; font-size: 13px; cursor: pointer; color: var(--ink); }
+.linkish { border: 0; background: none; color: var(--accent); text-decoration: underline; padding: 0; font-size: inherit; cursor: pointer; }

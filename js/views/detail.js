@@ -1,8 +1,10 @@
-import { state, isUnverified, saveVisit, deleteVisit } from '../store.js';
+import { state, isUnverified, saveVisit, deleteVisit, isCustom, officialVisits, deleteCustomPlace } from '../store.js';
 import { getPhotos, getPicks, savePick, deletePick } from '../db.js';
 import { esc, formatDate, stars, today, uid, resizeImage, toast, MAX_PHOTOS } from '../util.js';
 import { seasonOf } from '../recommend.js';
 import { openPamphletSheet } from './pamphlet-sheet.js';
+import { openPlaceForm } from './place-form.js';
+import { inPlan, togglePlan } from '../plan.js';
 
 const NEED = '<span class="need">확인 필요</span>';
 const PICK_TYPES = { food: '맛집', stay: '숙소' };
@@ -57,7 +59,7 @@ function guideSection(place) {
   const g = state.guide[place.id];
   const q = g?.q || place.name;
   // 시·군·구가 넓은 범위(○○ 외, 전역)면 음식 검색에 관광지 검색어를 쓴다
-  const area = place.unverified?.includes('sigungu') ? q : place.sigungu;
+  const area = place.unverified?.includes('sigungu') || !place.sigungu ? q : place.sigungu;
   return `
     <section class="panel guide">
       <h2>여행 정보</h2>
@@ -85,7 +87,11 @@ function guideSection(place) {
       </div>
       <div id="picks"></div>
     </section>
-    <button type="button" class="btn pamphlet-btn" id="pamphlet">📄 이곳 여행 팜플렛 만들기</button>`;
+    <div class="row detail-actions">
+      <button type="button" class="btn pamphlet-btn" id="plan-toggle" aria-pressed="${inPlan(place.id)}">${inPlan(place.id) ? '✓ 내 일정에 담김' : '🧳 내 일정에 담기'}</button>
+      <button type="button" class="btn pamphlet-btn" id="pamphlet">📄 이곳만 팜플렛</button>
+    </div>
+    <p class="hint small">담아 둔 곳은 목록 화면의 '내 여행 일정'에서 당일치기·1박 2일 등으로 나눠 팜플렛을 만들 수 있어요.</p>`;
 }
 
 // 상세 화면. 반환값은 화면을 떠날 때 호출할 정리 함수
@@ -124,18 +130,25 @@ export function renderDetail(root, placeId) {
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg> 목록
         </a>
         <section class="hero">
-          <span class="hero-num">No. ${Number(place.id.slice(1))}</span>
+          <span class="hero-num">${isCustom(place) ? '내가 추가한 여행지' : `No. ${Number(place.id.slice(1))}`}</span>
           <h1>${esc(place.name)}</h1>
-          <p class="hero-meta">${esc(place.sido)} · ${esc(place.sigungu)}${place.unverified?.includes('sigungu') ? ' ' + NEED : ''} <span class="tag">${esc(place.category)}</span></p>
+          <p class="hero-meta">${esc(place.sido)}${place.sigungu ? ` · ${esc(place.sigungu)}` : ''}${place.unverified?.includes('sigungu') ? ' ' + NEED : ''} <span class="tag">${esc(place.category)}</span></p>
           ${visit ? '<span class="stamp big">VISITED</span>' : ''}
+          ${isCustom(place) ? `<div class="hero-tools">
+            <button type="button" class="btn small" id="place-edit">여행지 고치기</button>
+            <button type="button" class="btn small ghost danger" id="place-del">삭제</button>
+          </div>` : ''}
         </section>
 
         ${info?.image && /^https:\/\//i.test(info.image) ? `<img class="info-photo" src="${esc(info.image)}" alt="${esc(place.name)}" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}
         <dl class="info">
           <div><dt>설명</dt><dd>${!isUnverified(place, 'description') ? esc(place.description)
-            : info?.text ? `${esc(info.text)} ${source}` : NEED}</dd></div>
-          <div><dt>위치</dt><dd>${!isUnverified(place, 'lat') ? `${place.lat}, ${place.lng}`
+            : info?.text ? `${esc(info.text)} ${source}`
+              : isCustom(place) ? '<span class="hint small">설명이 없어요. \'여행지 고치기\'에서 직접 적을 수 있어요.</span>' : NEED}</dd></div>
+          <div><dt>위치</dt><dd>${isCustom(place) && !isUnverified(place, 'lat') ? `${place.lat.toFixed(4)}, ${place.lng.toFixed(4)}${place.coordLabel ? ` <span class="hint small">${esc(place.coordLabel)}</span>` : ''}`
+            : !isUnverified(place, 'lat') ? `${place.lat}, ${place.lng}`
             : state.guide[place.id]?.areaExact ? `${state.guide[place.id].area.map((n) => n.toFixed(4)).join(', ')} ${source}`
+              : isCustom(place) ? `${NEED} <span class="hint small">지금은 ${esc(place.sido)}의 대략적인 중심으로 거리를 계산해요. '여행지 고치기'에서 위치를 찾아 주세요.</span>`
               : `${NEED} <span class="hint small">관광지 정보를 받으면 정확한 위치로 바뀌어요</span>`}</dd></div>
         </dl>
 
@@ -161,6 +174,19 @@ export function renderDetail(root, placeId) {
 
     root.querySelectorAll('[data-route]').forEach((b) => b.addEventListener('click', () => openRoute(b.dataset.route, place)));
     root.querySelector('#pick-add').addEventListener('click', () => openPickForm());
+    root.querySelector('#plan-toggle').addEventListener('click', (e) => {
+      const on = togglePlan(place.id);
+      e.currentTarget.textContent = on ? '✓ 내 일정에 담김' : '🧳 내 일정에 담기';
+      e.currentTarget.setAttribute('aria-pressed', on);
+      toast(on ? '내 일정에 담았어요. 목록 화면에서 팜플렛을 만들 수 있어요.' : '내 일정에서 뺐어요');
+    });
+    root.querySelector('#place-edit')?.addEventListener('click', () => openPlaceForm(place));
+    root.querySelector('#place-del')?.addEventListener('click', async () => {
+      if (!confirm(`'${place.name}'을(를) 지울까요? 이곳의 방문 기록·사진·메모도 함께 지워져요.`)) return;
+      await deleteCustomPlace(place.id);
+      toast('여행지를 지웠어요');
+      location.hash = '#/list';
+    });
     root.querySelector('#pamphlet').addEventListener('click', () => openPamphletSheet({
       title: `${place.name} 여행`,
       season: seasonOf(new Date().getMonth() + 1),
@@ -396,7 +422,7 @@ export function renderDetail(root, placeId) {
   function stampEffect() {
     const s = document.createElement('div');
     s.className = 'stamp-pop';
-    s.innerHTML = `<span>VISITED</span><small>${state.visits.size} / ${state.places.length}</small>`;
+    s.innerHTML = `<span>VISITED</span><small>${isCustom(place) ? '내 여행지' : `${officialVisits()} / ${state.places.length}`}</small>`;
     document.body.appendChild(s);
     setTimeout(() => s.remove(), 1400);
   }

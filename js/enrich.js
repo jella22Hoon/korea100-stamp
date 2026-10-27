@@ -134,7 +134,7 @@ function regionWords(p) {
 export async function lookupPlace(p) {
   const q = p.guide?.q || p.name;
   const region = regionWords(p);
-  const names = [...new Set([q, q.replace(/^(\S+)\s+/, (m, w) => (region.some((c) => norm(c) === norm(w)) ? '' : m))])];
+  const names = [...new Set([q, q.replace(/^(\S+)\s+/, (m, w) => (region.some((c) => norm(c) === norm(w)) ? '' : m)), p.name])];
   for (const n of names) {
     const r = await lookup(n, region);
     if (r) return r;

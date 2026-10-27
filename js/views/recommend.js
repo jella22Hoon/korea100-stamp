@@ -1,4 +1,4 @@
-import { state } from '../store.js';
+import { state, allPlaces } from '../store.js';
 import { recommend, seasonOf, fmtHours, SEASONS, TRIPS, ORIGINS } from '../recommend.js';
 import { esc, storage, toast } from '../util.js';
 import { openPamphletSheet } from './pamphlet-sheet.js';
@@ -16,7 +16,7 @@ function loadPrefs() {
 }
 
 function items() {
-  return state.places.map((p) => ({ ...p, ...state.guide[p.id] })).filter((p) => p.area);
+  return allPlaces().map((p) => ({ ...p, ...state.guide[p.id] })).filter((p) => p.area);
 }
 
 function chip(group, value, label, active) {
@@ -30,7 +30,7 @@ function stopHtml(s, season, first) {
     <li class="stop">
       <a href="#/place/${s.id}">
         <span class="stop-name">${esc(s.name)}</span>
-        <span class="stop-meta">${esc(s.sido)} · ${esc(s.sigungu)} · 약 ${fmtHours(s.hours)}${inSeason ? ` <span class="season-tag">${SEASON_ICON[season]} ${season} 추천</span>` : ''}</span>
+        <span class="stop-meta">${esc(s.sido)}${s.sigungu ? ` · ${esc(s.sigungu)}` : ''} · 약 ${fmtHours(s.hours)}${inSeason ? ` <span class="season-tag">${SEASON_ICON[season]} ${season} 추천</span>` : ''}</span>
       </a>
     </li>`;
 }
@@ -78,7 +78,7 @@ export function renderRecommend(root) {
   root.innerHTML = `
     <header class="page-head">
       <h1>다음 여행 추천</h1>
-      <p class="sub">아직 안 가 본 <strong>${state.places.length - state.visits.size}</strong>곳 중에서 골라 드려요</p>
+      <p class="sub">아직 안 가 본 <strong>${allPlaces().filter((p) => !state.visits.has(p.id)).length}</strong>곳 중에서 골라 드려요</p>
     </header>
 
     <section class="panel rec-form">
@@ -129,8 +129,8 @@ export function renderRecommend(root) {
       c.stops.forEach((s) => seen.add(s.id));
     });
 
-    if (state.visits.size >= state.places.length) {
-      results.innerHTML = '<p class="empty">🎉 100곳을 모두 방문했어요!</p>';
+    if (allPlaces().every((p) => state.visits.has(p.id))) {
+      results.innerHTML = '<p class="empty">🎉 모든 곳을 방문했어요!</p>';
       return;
     }
     if (!courses.length) {

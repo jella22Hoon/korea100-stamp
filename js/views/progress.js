@@ -3,7 +3,9 @@ import { SIDO_ORDER, esc, formatDate, stars } from '../util.js';
 
 export function renderProgress(root) {
   const total = state.places.length;
-  const done = state.visits.size;
+  // 추가한 여행지는 100선 진행률과 따로 센다
+  const done = state.places.filter((p) => state.visits.has(p.id)).length;
+  const customDone = state.custom.filter((p) => state.visits.has(p.id)).length;
   const pct = total ? Math.round((done / total) * 100) : 0;
 
   const bySido = new Map();
@@ -51,6 +53,18 @@ export function renderProgress(root) {
           </li>`).join('')}
       </ul>
     </section>
+
+    ${state.custom.length ? `
+      <section class="panel">
+        <h2>내가 추가한 여행지</h2>
+        <ul class="bars">
+          <li class="${customDone === state.custom.length ? 'complete' : ''}">
+            <span class="bar-label">추가</span>
+            <span class="bar-track"><span class="bar-fill" style="width:${(customDone / state.custom.length) * 100}%"></span></span>
+            <span class="bar-value">${customDone}/${state.custom.length}</span>
+          </li>
+        </ul>
+      </section>` : ''}
 
     <section class="panel">
       <h2>최근 방문</h2>

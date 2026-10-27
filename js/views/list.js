@@ -1,6 +1,9 @@
-import { state } from '../store.js';
-import { SIDO_ORDER, CATEGORIES, esc, formatDate, stars, storage } from '../util.js';
-import { km, driveHours, fmtHours } from '../recommend.js';
+import { state, allPlaces, isCustom, officialVisits } from '../store.js';
+import { SIDO_ORDER, CATEGORIES, esc, formatDate, stars, storage, toast } from '../util.js';
+import { km, driveHours, fmtHours, planCourse, seasonOf, TRIPS, ORIGINS } from '../recommend.js';
+import { plan, savePlan, inPlan, togglePlan, prunePlan, planOrigin, setPlanOrigin } from '../plan.js';
+import { openPamphletSheet } from './pamphlet-sheet.js';
+import { openPlaceForm } from './place-form.js';
 
 const FILTER_KEY = 'korea100.filters';
 
@@ -10,7 +13,7 @@ let locating = false;
 
 function nearestPlaces(pos, n = 3) {
   const here = [pos.lat, pos.lng];
-  return state.places
+  return allPlaces()
     .map((p) => ({ place: p, area: state.guide[p.id]?.area }))
     .filter((x) => x.area)
     .map((x) => ({ ...x, dist: km(here, x.area), drive: driveHours(here, x.area) }))
@@ -76,7 +79,61 @@ function locate(box) {
   }, { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 });
 }
 
-const filters = storage.get(FILTER_KEY, { q: '', sido: '', category: '', status: 'all' });
+const filters = { q: '', sido: '', category: '', status: 'all', set: '', ...storage.get(FILTER_KEY, {}) };
+let picking = false; // 목록에서 일정에 담을 곳을 고르는 중
+
+const MODE_TEXT = {
+  car: (h) => `자동차 편도 약 ${fmtHours(h)}`,
+  air: () => '항공 이동 (편도 약 3시간 30분)',
+  ferry: (h) => `여객선 이동 (편도 약 ${fmtHours(h)})`,
+};
+
+const planItems = () => plan.ids.map((id) => state.placeById.get(id)).filter(Boolean)
+  .map((p) => ({ ...state.guide[p.id], ...p }));
+
+function planHtml() {
+  if (!plan.ids.length && !picking) {
+    return `
+      <button type="button" class="btn nearby-find" data-plan="pick">🧳 여행 일정 짜서 팜플렛 만들기</button>
+      <p class="hint small">당일치기·1박 2일 같은 일정을 고르고 목록에서 가고 싶은 곳을 담으면, 날짜별로 나눠 팜플렛을 만들어요.</p>`;
+  }
+  const origin = planOrigin();
+  const c = plan.ids.length ? planCourse(planItems(), plan.tripKey, origin) : null;
+  const trip = TRIPS[plan.tripKey];
+  const here = storage.get('korea100.recommend', {}).here;
+  const warn = [];
+  if (c && c.tourHours > c.budget) warn.push(`${trip.label}에 비해 둘러볼 곳이 많아요. 일정을 늘리거나 몇 곳을 빼 보세요.`);
+  if (c?.tooFar) warn.push(`${origin.name}에서 멀어 ${trip.label}로는 빠듯해요.`);
+  if (c?.mixed) warn.push('섬(제주·울릉도)과 육지가 섞여 있어 이동 시간이 정확하지 않아요.');
+  return `
+    <div class="nearby-head">
+      <h2>🧳 내 여행 일정</h2>
+      ${plan.ids.length ? '<button type="button" class="btn small ghost" data-plan="clear">비우기</button>' : ''}
+    </div>
+    <div class="seg plan-trip" role="group" aria-label="여행 일정">
+      ${Object.entries(TRIPS).map(([k, t]) => chip('trip', k, t.label, plan.tripKey === k)).join('')}
+    </div>
+    <label class="plan-origin"><span>출발지</span>
+      <select id="plan-origin">
+        ${here ? `<option value="here" ${origin.name === '현재 위치' ? 'selected' : ''}>📍 현재 위치</option>` : ''}
+        ${ORIGINS.map((o) => `<option ${origin.name === o.name ? 'selected' : ''}>${o.name}</option>`).join('')}
+      </select>
+    </label>
+    ${c ? `
+      <p class="plan-meta">${MODE_TEXT[c.mode](c.oneWay)} · 관광과 지역 내 이동 약 ${fmtHours(c.tourHours)}</p>
+      <ol class="plan-days">${c.days.map((d, i) => `
+        <li><b>${c.days.length > 1 ? `${i + 1}일차` : '일정'}</b>
+          ${d.length ? d.map((x) => `<span class="plan-stop">${esc(x.name)}<button type="button" data-remove="${x.id}" aria-label="${esc(x.name)} 빼기">✕</button></span>`).join('')
+            : '<span class="hint small">이동·자유 일정</span>'}
+        </li>`).join('')}</ol>
+      ${warn.map((w) => `<p class="nearby-msg nearby-err">${w}</p>`).join('')}`
+    : '<p class="hint small">아래 목록에서 가고 싶은 곳을 눌러 담아 주세요.</p>'}
+    <div class="row">
+      <button type="button" class="btn${picking ? ' primary' : ''}" data-plan="pick">${picking ? '✓ 다 골랐어요' : '+ 목록에서 담기'}</button>
+      <button type="button" class="btn" data-plan="pamphlet" ${c ? '' : 'disabled'}>📄 팜플렛</button>
+    </div>
+    <p class="hint small">방문 순서와 날짜는 출발지에서 가까운 곳부터 자동으로 나눠요. 이동 시간은 직선거리로 추정한 값이에요.</p>`;
+}
 
 function saveFilters() {
   storage.set(FILTER_KEY, filters);
@@ -87,6 +144,8 @@ function chip(group, value, label, active) {
 }
 
 function matches(place) {
+  if (filters.set === 'official' && isCustom(place)) return false;
+  if (filters.set === 'custom' && !isCustom(place)) return false;
   const visited = state.visits.has(place.id);
   if (filters.status === 'visited' && !visited) return false;
   if (filters.status === 'unvisited' && visited) return false;
@@ -100,31 +159,40 @@ function matches(place) {
   return true;
 }
 
+const cardNum = (place) => (isCustom(place) ? '+' : Number(place.id.slice(1)));
+
 export function card(place) {
   const visit = state.visits.get(place.id);
-  const num = Number(place.id.slice(1));
+  const on = inPlan(place.id);
+  // 일정에 담는 중에는 누르면 담기/빼기
+  const open = picking
+    ? `<button type="button" class="card pickable${visit ? ' visited' : ''}${on ? ' picked' : ''}" data-pick="${place.id}" aria-pressed="${on}">`
+    : `<a class="card${visit ? ' visited' : ''}${isCustom(place) ? ' custom' : ''}" href="#/place/${place.id}">`;
   return `
-    <a class="card${visit ? ' visited' : ''}" href="#/place/${place.id}">
-      <span class="card-num">${num}</span>
+    ${open}
+      <span class="card-num">${picking && on ? '✓' : cardNum(place)}</span>
       <span class="card-body">
         <span class="card-name">${esc(place.name)}</span>
         <span class="card-meta">${esc(place.sido)} · ${esc(place.sigungu)} <span class="tag">${esc(place.category)}</span></span>
         ${visit ? `<span class="card-visit">${formatDate(visit.visitedAt)} <span class="stars" aria-label="별점 ${visit.rating}점">${stars(visit.rating)}</span></span>` : ''}
       </span>
       ${visit ? '<span class="stamp" aria-label="방문 완료">VISITED</span>' : ''}
-    </a>`;
+    ${picking ? '</button>' : '</a>'}`;
 }
 
 export function renderList(root) {
+  picking = false;
+  prunePlan((id) => state.placeById.has(id));
   const sidoCounts = new Map();
-  state.places.forEach((p) => sidoCounts.set(p.sido, (sidoCounts.get(p.sido) || 0) + 1));
+  allPlaces().forEach((p) => sidoCounts.set(p.sido, (sidoCounts.get(p.sido) || 0) + 1));
 
   root.innerHTML = `
     <header class="page-head">
       <h1>한국관광 100선</h1>
-      <p class="sub"><strong>${state.visits.size}</strong> / ${state.places.length} 곳 방문</p>
+      <p class="sub"><strong>${officialVisits()}</strong> / ${state.places.length} 곳 방문${state.custom.length ? ` · 추가한 여행지 ${state.custom.length}곳` : ''}</p>
     </header>
     <section class="panel nearby" id="nearby" aria-live="polite"></section>
+    <section class="panel nearby plan" id="plan"></section>
     <div class="filters">
       <label class="search">
         <span class="sr-only">검색</span>
@@ -142,15 +210,82 @@ export function renderList(root) {
         ${chip('category', '', '모든 분류', !filters.category)}
         ${CATEGORIES.map((c) => chip('category', c, c, filters.category === c)).join('')}
       </div>
+      ${state.custom.length ? `<div class="chips" role="group" aria-label="구분">
+        ${chip('set', '', '전체', !filters.set)}${chip('set', 'official', '100선', filters.set === 'official')}${chip('set', 'custom', '내가 추가', filters.set === 'custom')}
+      </div>` : ''}
     </div>
     <p class="result-count" id="count" aria-live="polite"></p>
-    <div class="cards" id="results"></div>`;
+    <div class="cards" id="results"></div>
+    <button type="button" class="btn add-place" id="add-place">➕ 100선에 없는 여행지 추가</button>
+    <div class="plan-bar" id="plan-bar" hidden></div>`;
 
   const results = root.querySelector('#results');
   const count = root.querySelector('#count');
 
+  const planBox = root.querySelector('#plan');
+  const planBar = root.querySelector('#plan-bar');
+
+  function renderPlan() {
+    planBox.innerHTML = planHtml();
+    planBar.hidden = !picking;
+    planBar.innerHTML = `<span>${TRIPS[plan.tripKey].label} · <b>${plan.ids.length}곳</b> 담음</span>
+      <button type="button" class="btn small primary" data-plan="done">다 골랐어요</button>`;
+  }
+
+  function onPlan(e) {
+    const t = e.target.closest('[data-plan], [data-remove], .chip[data-group="trip"]');
+    if (!t || t.disabled) return;
+    if (t.dataset.remove) {
+      togglePlan(t.dataset.remove);
+    } else if (t.dataset.group === 'trip') {
+      plan.tripKey = t.dataset.value;
+      savePlan();
+    } else if (t.dataset.plan === 'pick' || t.dataset.plan === 'done') {
+      picking = t.dataset.plan === 'pick' ? !picking : false;
+      if (picking) toast('목록에서 가고 싶은 곳을 눌러 담아 주세요');
+    } else if (t.dataset.plan === 'clear') {
+      if (!confirm('담아 둔 여행지를 모두 뺄까요?')) return;
+      plan.ids = [];
+      savePlan();
+    } else if (t.dataset.plan === 'pamphlet') {
+      const origin = planOrigin();
+      const c = planCourse(planItems(), plan.tripKey, origin);
+      if (!c) return;
+      openPamphletSheet({
+        title: c.title,
+        season: seasonOf(new Date().getMonth() + 1),
+        mode: c.mode,
+        oneWay: c.oneWay,
+        originName: origin.name,
+        days: c.days.map((d) => d.map((x) => ({ id: x.id, leg: x.leg }))),
+      });
+      return;
+    }
+    const wasPicking = t.dataset.plan === 'done' || (t.dataset.plan === 'pick' && !picking);
+    renderPlan();
+    renderResults();
+    if (wasPicking) planBox.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  planBox.addEventListener('click', onPlan);
+  planBar.addEventListener('click', onPlan);
+  planBox.addEventListener('change', (e) => {
+    if (e.target.id !== 'plan-origin') return;
+    setPlanOrigin(e.target.value);
+    renderPlan();
+  });
+  results.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-pick]');
+    if (!b) return;
+    const on = togglePlan(b.dataset.pick);
+    b.classList.toggle('picked', on);
+    b.setAttribute('aria-pressed', on);
+    b.querySelector('.card-num').textContent = on ? '✓' : cardNum(state.placeById.get(b.dataset.pick));
+    renderPlan();
+  });
+  root.querySelector('#add-place').addEventListener('click', () => openPlaceForm());
+
   function renderResults() {
-    const list = state.places.filter(matches);
+    const list = allPlaces().filter(matches);
     count.textContent = `${list.length}곳`;
     results.innerHTML = list.length
       ? list.map(card).join('')
@@ -163,7 +298,7 @@ export function renderList(root) {
     renderResults();
   });
 
-  root.querySelectorAll('.chip').forEach((btn) => {
+  root.querySelectorAll('.filters .chip').forEach((btn) => {
     btn.addEventListener('click', () => {
       const { group, value } = btn.dataset;
       filters[group] = value;
@@ -178,5 +313,6 @@ export function renderList(root) {
   });
 
   renderResults();
+  renderPlan();
   renderNearby(root.querySelector('#nearby'));
 }
