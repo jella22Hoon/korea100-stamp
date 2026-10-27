@@ -1,10 +1,9 @@
 // 100선에 없는 여행지를 추가하거나 고치는 시트
 import { saveCustomPlace, refreshOnePlace } from '../store.js';
-import { SIDO_ORDER, CATEGORIES, esc, toast } from '../util.js';
+import { SIDO_ORDER, CATEGORIES, esc, toast, geocode } from '../util.js';
 import { SEASONS } from '../recommend.js';
 
 const HOURS = [1, 2, 3, 4, 6, 8];
-const NOMINATIM = 'https://nominatim.openstreetmap.org/search';
 
 // '이름 - 설명' 한 줄에 하나씩 → [{ n, d }]
 function parsePoints(text) {
@@ -21,10 +20,7 @@ const pointsText = (points = []) => points.map((x) => (x.d ? `${x.n} - ${x.d}` :
 async function searchPlace(name, sido, sigungu) {
   const tries = [...new Set([`${name} ${sigungu}`.trim(), name])];
   for (const q of tries) {
-    const url = `${NOMINATIM}?${new URLSearchParams({ q, format: 'jsonv2', limit: 5, countrycodes: 'kr', 'accept-language': 'ko' })}`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(String(res.status));
-    const list = (await res.json()).map((r) => ({ lat: Number(r.lat), lng: Number(r.lon), label: r.display_name }));
+    const list = await geocode(q);
     // 고른 시·도 안에 있는 결과를 앞으로
     const inSido = (r) => sido && r.label.includes(sido.slice(0, 2));
     list.sort((a, b) => inSido(b) - inSido(a));

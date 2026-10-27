@@ -1,8 +1,9 @@
 import { state, allPlaces, isCustom, officialVisits } from '../store.js';
-import { SIDO_ORDER, CATEGORIES, esc, formatDate, stars, storage, toast } from '../util.js';
-import { km, driveHours, fmtHours, planCourse, seasonOf, TRIPS, ORIGINS } from '../recommend.js';
-import { plan, savePlan, inPlan, togglePlan, prunePlan, planOrigin, setPlanOrigin } from '../plan.js';
+import { SIDO_ORDER, CATEGORIES, esc, formatDate, stars, storage, toast, naverMap } from '../util.js';
+import { km, driveHours, fmtHours, planCourse, seasonOf, TRIPS } from '../recommend.js';
+import { plan, savePlan, inPlan, togglePlan, prunePlan, planOrigin, setPlanOrigin, originOptions } from '../plan.js';
 import { openPamphletSheet } from './pamphlet-sheet.js';
+import { openOriginSheet } from './origin-sheet.js';
 import { openPlaceForm } from './place-form.js';
 
 const FILTER_KEY = 'korea100.filters';
@@ -100,7 +101,6 @@ function planHtml() {
   const origin = planOrigin();
   const c = plan.ids.length ? planCourse(planItems(), plan.tripKey, origin) : null;
   const trip = TRIPS[plan.tripKey];
-  const here = storage.get('korea100.recommend', {}).here;
   const warn = [];
   if (c && c.tourHours > c.budget) warn.push(`${trip.label}에 비해 둘러볼 곳이 많아요. 일정을 늘리거나 몇 곳을 빼 보세요.`);
   if (c?.tooFar) warn.push(`${origin.name}에서 멀어 ${trip.label}로는 빠듯해요.`);
@@ -113,12 +113,11 @@ function planHtml() {
     <div class="seg plan-trip" role="group" aria-label="여행 일정">
       ${Object.entries(TRIPS).map(([k, t]) => chip('trip', k, t.label, plan.tripKey === k)).join('')}
     </div>
-    <label class="plan-origin"><span>출발지</span>
-      <select id="plan-origin">
-        ${here ? `<option value="here" ${origin.name === '현재 위치' ? 'selected' : ''}>📍 현재 위치</option>` : ''}
-        ${ORIGINS.map((o) => `<option ${origin.name === o.name ? 'selected' : ''}>${o.name}</option>`).join('')}
-      </select>
-    </label>
+    <div class="plan-origin"><span>출발지</span>
+      <select id="plan-origin" aria-label="출발지">${originOptions()}</select>
+      <button type="button" class="btn small" data-plan="origin">🔍 주소</button>
+    </div>
+    ${origin.address ? `<p class="plan-addr">${esc(origin.address)} <a href="${esc(naverMap(origin.address))}" target="_blank" rel="noopener noreferrer">네이버 지도에서 확인 ↗</a></p>` : ''}
     ${c ? `
       <p class="plan-meta">${MODE_TEXT[c.mode](c.oneWay)} · 관광과 지역 내 이동 약 ${fmtHours(c.tourHours)}</p>
       <ol class="plan-days">${c.days.map((d, i) => `
@@ -247,6 +246,9 @@ export function renderList(root) {
       if (!confirm('담아 둔 여행지를 모두 뺄까요?')) return;
       plan.ids = [];
       savePlan();
+    } else if (t.dataset.plan === 'origin') {
+      openOriginSheet(renderPlan);
+      return;
     } else if (t.dataset.plan === 'pamphlet') {
       const origin = planOrigin();
       const c = planCourse(planItems(), plan.tripKey, origin);
@@ -270,6 +272,11 @@ export function renderList(root) {
   planBar.addEventListener('click', onPlan);
   planBox.addEventListener('change', (e) => {
     if (e.target.id !== 'plan-origin') return;
+    if (e.target.value === '__search') {
+      renderPlan(); // 선택을 원래대로 돌려 두고 찾기 시트를 연다
+      openOriginSheet(renderPlan);
+      return;
+    }
     setPlanOrigin(e.target.value);
     renderPlan();
   });

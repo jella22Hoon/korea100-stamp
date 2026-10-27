@@ -12,6 +12,37 @@ export const SIDO_CENTER = {
   제주: [33.40, 126.55],
 };
 
+export const naverMap = (q) => `https://map.naver.com/p/search/${encodeURIComponent(q)}`;
+
+// 오픈스트리트맵 주소 정보를 '시·도 시·군·구 도로명 번호' 순서로 만든다. 네이버 지도 검색어로 쓴다.
+// 예: { city: 서울특별시, borough: 마포구, road: 월드컵로, house_number: 240 } → '서울특별시 마포구 월드컵로 240'
+function koreanAddress(a = {}, name = '') {
+  const top = a.province || a.state || a.city || '';
+  const local = [a.city !== top ? a.city : '', a.county, a.borough, /(구|군|시)$/.test(a.suburb || '') ? a.suburb : '', a.town]
+    .filter(Boolean).filter((x, i, l) => l.indexOf(x) === i);
+  const tail = a.road
+    ? [a.road, /^\d/.test(a.house_number || '') ? a.house_number : '']
+    : [a.village || a.quarter || a.legal || a.suburb || '', name];
+  return [top, ...local, ...tail].filter(Boolean).filter((x, i, l) => l.indexOf(x) === i).join(' ');
+}
+
+/**
+ * 주소나 장소 이름으로 위치를 찾는다(오픈스트리트맵 Nominatim). 버튼을 누를 때만 한 번 요청한다.
+ * → [{ lat, lng, label(원래 표기), address(한국식 주소), name(장소 이름) }]
+ */
+export async function geocode(q, limit = 5) {
+  const url = `https://nominatim.openstreetmap.org/search?${new URLSearchParams({ q, format: 'jsonv2', limit, countrycodes: 'kr', 'accept-language': 'ko', addressdetails: 1 })}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(String(res.status));
+  return (await res.json()).map((r) => ({
+    lat: Number(r.lat),
+    lng: Number(r.lon),
+    label: r.display_name,
+    address: koreanAddress(r.address, r.name) || r.display_name,
+    name: r.name || '',
+  }));
+}
+
 export const CATEGORIES = ['자연', '역사', '문화', '도시', '레저'];
 
 export const MAX_PHOTOS = 5;

@@ -1,7 +1,9 @@
 import { state, allPlaces } from '../store.js';
-import { recommend, seasonOf, fmtHours, SEASONS, TRIPS, ORIGINS } from '../recommend.js';
-import { esc, storage, toast } from '../util.js';
+import { recommend, seasonOf, fmtHours, SEASONS, TRIPS } from '../recommend.js';
+import { esc, storage, toast, naverMap } from '../util.js';
+import { resolveOrigin, originOptions } from '../plan.js';
 import { openPamphletSheet } from './pamphlet-sheet.js';
+import { openOriginSheet } from './origin-sheet.js';
 
 const PREF_KEY = 'korea100.recommend';
 const SEASON_ICON = { 봄: '🌸', 여름: '🌊', 가을: '🍁', 겨울: '❄️' };
@@ -69,9 +71,7 @@ export function renderRecommend(root) {
 
   const save = () => storage.set(PREF_KEY, prefs);
   const currentSeason = () => (prefs.season === 'auto' ? seasonOf(new Date().getMonth() + 1) : prefs.season);
-  const origin = () => (prefs.originName === 'here' && prefs.here
-    ? { name: '현재 위치', ...prefs.here }
-    : ORIGINS.find((o) => o.name === prefs.originName) || ORIGINS[0]);
+  const origin = () => resolveOrigin(prefs);
 
   const autoSeason = seasonOf(new Date().getMonth() + 1);
 
@@ -96,12 +96,10 @@ export function renderRecommend(root) {
       <label class="field">
         <span>출발지</span>
         <div class="origin-row">
-          <select id="origin">
-            ${prefs.here ? `<option value="here" ${prefs.originName === 'here' ? 'selected' : ''}>📍 현재 위치</option>` : ''}
-            ${ORIGINS.map((o) => `<option value="${o.name}" ${prefs.originName === o.name ? 'selected' : ''}>${o.name}</option>`).join('')}
-          </select>
+          <select id="origin">${originOptions(prefs)}</select>
           <button type="button" class="btn small" id="locate">📍 현재 위치</button>
         </div>
+        ${origin().address ? `<p class="plan-addr">${esc(origin().address)} <a href="${esc(naverMap(origin().address))}" target="_blank" rel="noopener noreferrer">네이버 지도에서 확인 ↗</a></p>` : ''}
       </label>
     </section>
 
@@ -173,9 +171,14 @@ export function renderRecommend(root) {
   }));
 
   root.querySelector('#origin').addEventListener('change', (e) => {
+    if (e.target.value === '__search') {
+      e.target.value = prefs.originName;
+      openOriginSheet(() => renderRecommend(root));
+      return;
+    }
     prefs.originName = e.target.value;
     save();
-    run();
+    renderRecommend(root); // 저장한 출발지의 주소 줄도 바꿔 그린다
   });
 
   root.querySelector('#locate').addEventListener('click', () => {
