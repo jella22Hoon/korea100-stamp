@@ -1,4 +1,4 @@
-import { state, reloadVisits } from '../store.js';
+import { state, reloadVisits, refreshPlaceInfo, clearPlaceInfo, checkForUpdate } from '../store.js';
 import { getAllVisits, getAllPhotos, getAllPicks, importData, clearAll } from '../db.js';
 import { esc, blobToDataURL, dataURLToBlob, downloadFile, today, toast, storage } from '../util.js';
 import { TOUR_KEY } from '../enrich.js';
@@ -53,6 +53,18 @@ async function restoreBackup(file, mode) {
   return applied;
 }
 
+function infoLabel() {
+  const { updatedAt, items } = state.info;
+  if (!updatedAt) return '아직 받지 않았어요 · 아래 버튼으로 받아요';
+  const d = new Date(updatedAt);
+  return `${d.getFullYear()}. ${d.getMonth() + 1}. ${d.getDate()}. 받음 · ${Object.keys(items).length}곳`;
+}
+
+// 받는 도중 다른 화면에 다녀와도 진행 상황을 보여 주고 멈출 수 있게 모듈에 둔다
+let refreshing = false;
+let cancelRefresh = false;
+let lastProgress = '';
+
 export function renderSettings(root) {
   const theme = storage.get(THEME_KEY, 'system');
   const meta = state.meta || {};
@@ -66,6 +78,20 @@ export function renderSettings(root) {
         ${[['system', '시스템'], ['light', '라이트'], ['dark', '다크']].map(([v, l]) => `
           <button type="button" class="chip${theme === v ? ' active' : ''}" role="radio" aria-checked="${theme === v}" data-theme="${v}">${l}</button>`).join('')}
       </div>
+    </section>
+
+    <section class="panel update">
+      <h2>정보 업데이트</h2>
+      <ul class="update-list">
+        <li><b>관광지 목록</b><span>${esc(meta.title || '한국관광 100선')} · 앱이 업데이트될 때 바뀌어요</span></li>
+        <li><b>볼거리·향토 음식</b><span>${state.guideMeta?.written ? `${esc(state.guideMeta.written)} 작성 · ` : ''}앱이 업데이트될 때 바뀌어요</span></li>
+        <li><b>설명·사진·정확한 위치</b><span id="info-date">${infoLabel()}</span></li>
+        <li><b>팜플렛 사진, 지도·맛집·숙소</b><span>쓸 때마다 최신 자료를 불러와요</span></li>
+      </ul>
+      <button type="button" class="btn" id="check-update">앱 새 버전 확인</button>
+      <button type="button" class="btn primary" id="refresh-info">관광지 정보 새로 받기</button>
+      <p class="hint small" id="refresh-status" aria-live="polite">100곳의 설명·사진·좌표를 위키백과(또는 TourAPI)에서 받아 이 기기에 저장해요. 1~2분 걸리고, 원할 때만 받아요.</p>
+      ${state.info.updatedAt ? '<button type="button" class="btn ghost small" id="clear-info">받은 정보 지우기</button>' : ''}
     </section>
 
     <section class="panel">
@@ -82,7 +108,7 @@ export function renderSettings(root) {
 
     <section class="panel">
       <h2>팜플렛 사진·설명</h2>
-      <p class="hint">팜플렛의 관광 포인트 사진·설명은 한국어 위키백과에서 찾아요. 한국관광공사 TourAPI 인증키를 넣으면 공식 사진·소개글을 먼저 써요. 인증키는 공공데이터포털(data.go.kr)에서 '한국관광공사_국문 관광정보 서비스'를 활용 신청하면 무료로 받을 수 있어요.</p>
+      <p class="hint">팜플렛과 '관광지 정보 새로 받기'의 사진·설명은 한국어 위키백과에서 찾아요. 한국관광공사 TourAPI 인증키를 넣으면 공식 사진·소개글을 먼저 써요. 인증키는 공공데이터포털(data.go.kr)에서 '한국관광공사_국문 관광정보 서비스'를 활용 신청하면 무료로 받을 수 있어요.</p>
       <label class="field">
         <span>TourAPI 인증키 (선택, 일반 인증키 Decoding)</span>
         <input type="password" id="tour-key" autocomplete="off" spellcheck="false" value="${esc(storage.get(TOUR_KEY, ''))}">
@@ -114,6 +140,62 @@ export function renderSettings(root) {
       x.setAttribute('aria-checked', x === b);
     });
   }));
+
+  root.querySelector('#check-update').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    btn.textContent = '확인하는 중…';
+    try {
+      if (await checkForUpdate()) {
+        toast('새 버전이 있어요. 다시 불러올게요');
+        setTimeout(() => location.reload(), 1200);
+        return;
+      }
+      toast('이미 최신 버전이에요');
+    } catch {
+      toast('확인하지 못했어요. 인터넷 연결을 확인해 주세요');
+    }
+    btn.disabled = false;
+    btn.textContent = '앱 새 버전 확인';
+  });
+
+  const refreshBtn = root.querySelector('#refresh-info');
+  if (refreshing) {
+    refreshBtn.textContent = cancelRefresh ? '멈추는 중…' : '멈추기';
+    refreshBtn.classList.remove('primary');
+    root.querySelector('#refresh-status').textContent = lastProgress;
+  }
+  refreshBtn.addEventListener('click', async () => {
+    if (refreshing) {
+      cancelRefresh = true;
+      refreshBtn.textContent = '멈추는 중…';
+      return;
+    }
+    if (!navigator.onLine) return toast('인터넷에 연결된 뒤 다시 시도해 주세요');
+    refreshing = true;
+    cancelRefresh = false;
+    refreshBtn.textContent = '멈추기';
+    refreshBtn.classList.remove('primary');
+    try {
+      const r = await refreshPlaceInfo((d, t, f) => {
+        lastProgress = `받는 중… ${d}/${t}곳 (찾음 ${f})`;
+        const el = document.getElementById('refresh-status');
+        if (el) el.textContent = lastProgress;
+      }, () => cancelRefresh);
+      toast(r.cancelled ? `멈췄어요. ${r.found}곳 정보를 저장했어요` : `${r.found}곳 정보를 받았어요`);
+    } catch {
+      toast('정보를 받지 못했어요');
+    }
+    refreshing = false;
+    if (location.hash.startsWith('#/settings')) renderSettings(root);
+  });
+
+  root.querySelector('#clear-info')?.addEventListener('click', () => {
+    if (!confirm('받아 둔 설명·사진·좌표를 지울까요? 방문 기록은 그대로 남아요.')) return;
+    clearPlaceInfo();
+    toast('받은 정보를 지웠어요');
+    renderSettings(root);
+  });
 
   root.querySelector('#tour-key').addEventListener('change', (e) => {
     storage.set(TOUR_KEY, e.target.value.trim());

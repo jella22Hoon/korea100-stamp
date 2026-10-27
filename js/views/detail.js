@@ -49,7 +49,7 @@ function routeSection(place) {
         <button type="button" class="maplink naver" data-route="public"><span aria-hidden="true">🚌</span> 대중교통으로</button>
         <button type="button" class="maplink naver" data-route="car"><span aria-hidden="true">🚗</span> 자동차로</button>
       </div>
-      <p class="hint small">길찾기는 네이버 지도 앱에서 현재 위치를 출발지로 열려요. 목적지는 관광지의 대략적인 위치라서, 넓은 곳은 앱에서 정확한 입구나 주차장으로 바꿔 주세요. 앱이 없으면 네이버 지도 웹이 열려요.</p>
+      <p class="hint small">길찾기는 네이버 지도 앱에서 현재 위치를 출발지로 열려요. ${state.guide[place.id]?.areaExact ? '목적지는 받아 둔 관광지 좌표예요. 그래도' : '목적지는 관광지의 대략적인 위치라서,'} 넓은 곳은 앱에서 정확한 입구나 주차장으로 바꿔 주세요. 앱이 없으면 네이버 지도 웹이 열려요.</p>
     </section>`;
 }
 
@@ -110,6 +110,13 @@ export function renderDetail(root, placeId) {
     photos = visit ? await getPhotos(place.id) : [];
     if (!alive) return;
     photos.sort((a, b) => visit.photoIds.indexOf(a.id) - visit.photoIds.indexOf(b.id));
+    // 설정의 '관광지 정보 새로 받기'로 받아 둔 설명·사진·좌표(출처와 받은 날짜를 함께 표시)
+    const info = state.info.items[place.id];
+    const at = state.info.updatedAt ? new Date(state.info.updatedAt) : null;
+    const sourceName = `${esc(info?.source || '')}${at ? ` · ${at.getMonth() + 1}/${at.getDate()} 기준` : ''}`;
+    const source = info ? (info.url && /^https:\/\//i.test(info.url)
+      ? `<a class="info-src" href="${esc(info.url)}" target="_blank" rel="noopener noreferrer">출처: ${sourceName}</a>`
+      : `<span class="info-src">출처: ${sourceName}</span>`) : '';
 
     root.innerHTML = `
       <div class="detail${visit ? ' visited' : ''}">
@@ -123,9 +130,13 @@ export function renderDetail(root, placeId) {
           ${visit ? '<span class="stamp big">VISITED</span>' : ''}
         </section>
 
+        ${info?.image && /^https:\/\//i.test(info.image) ? `<img class="info-photo" src="${esc(info.image)}" alt="${esc(place.name)}" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}
         <dl class="info">
-          <div><dt>설명</dt><dd>${isUnverified(place, 'description') ? NEED : esc(place.description)}</dd></div>
-          <div><dt>위치</dt><dd>${isUnverified(place, 'lat') ? NEED : `${place.lat}, ${place.lng}`}</dd></div>
+          <div><dt>설명</dt><dd>${!isUnverified(place, 'description') ? esc(place.description)
+            : info?.text ? `${esc(info.text)} ${source}` : NEED}</dd></div>
+          <div><dt>위치</dt><dd>${!isUnverified(place, 'lat') ? `${place.lat}, ${place.lng}`
+            : state.guide[place.id]?.areaExact ? `${state.guide[place.id].area.map((n) => n.toFixed(4)).join(', ')} ${source}`
+              : `${NEED} <span class="hint small">관광지 정보를 받으면 정확한 위치로 바뀌어요</span>`}</dd></div>
         </dl>
 
         ${routeSection(place)}

@@ -77,13 +77,14 @@ async function fromTour(name, key, ctx) {
   } catch { /* 설명 없이 사진만 쓴다 */ }
   const image = https(hit.firstimage || hit.firstimage2);
   if (!image && !text) return null;
-  return { title: hit.title, image, text, source: '한국관광공사', url: '' };
+  const lat = Number(hit.mapy); const lng = Number(hit.mapx);
+  return { title: hit.title, image, text, source: '한국관광공사', url: '', ...(lat && lng ? { lat, lng } : {}) };
 }
 
 async function fromWiki(name, ctx) {
   const params = new URLSearchParams({
     action: 'query', format: 'json', origin: '*', generator: 'search', gsrsearch: name, gsrlimit: 5,
-    prop: 'extracts|pageimages|info', exintro: 1, explaintext: 1, exsentences: 3, exlimit: 5,
+    prop: 'extracts|pageimages|info|coordinates', exintro: 1, explaintext: 1, exsentences: 3, exlimit: 5,
     piprop: 'thumbnail', pithumbsize: 640, inprop: 'url', redirects: 1,
   });
   const data = await getJSON(`${WIKI}?${params}`);
@@ -92,7 +93,11 @@ async function fromWiki(name, ctx) {
   // 제목이 이름과 똑같은 문서를 먼저 고른다
   const hit = ok.find((p) => norm(p.title) === norm(name)) || ok[0];
   if (!hit || (!hit.thumbnail && !hit.extract)) return null;
-  return { title: hit.title, image: https(hit.thumbnail?.source), text: clip(hit.extract), source: '위키백과', url: hit.fullurl };
+  const c = hit.coordinates?.[0];
+  return {
+    title: hit.title, image: https(hit.thumbnail?.source), text: clip(hit.extract), source: '위키백과', url: hit.fullurl,
+    ...(c ? { lat: c.lat, lng: c.lon } : {}),
+  };
 }
 
 // 하나의 이름(관광지 또는 볼거리)에 대한 사진·설명. ctx는 같은 대상인지 확인할 지역·관광지 단어들. 못 찾으면 null
@@ -119,26 +124,39 @@ export async function lookup(name, ctx = []) {
   return r;
 }
 
+// 시·도와 시·군·구 이름(○○시 → ○○)으로 같은 이름의 다른 곳을 걸러 낸다
+function regionWords(p) {
+  return [p.sido, SIDO_FULL[p.sido], ...String(p.sigungu || '').split(/[\s,·]+/).map((w) => w.replace(/(특별자치시|광역시|시|군|구)$/, ''))]
+    .filter((w) => w && w.length >= 2);
+}
+
+// 관광지 자체의 사진·설명·좌표. '경주 대릉원' → '대릉원'처럼 앞의 지역 이름을 뗀 이름도 찾아본다
+export async function lookupPlace(p) {
+  const q = p.guide?.q || p.name;
+  const region = regionWords(p);
+  const names = [...new Set([q, q.replace(/^(\S+)\s+/, (m, w) => (region.some((c) => norm(c) === norm(w)) ? '' : m))])];
+  for (const n of names) {
+    const r = await lookup(n, region);
+    if (r) return r;
+  }
+  return null;
+}
+
 // 관광지와 볼거리 이름 목록을 한꺼번에 찾는다. onProgress(done, total)
 export async function enrichPlaces(places, onProgress) {
   const jobs = [];
   for (const p of places) {
-    const q = p.guide?.q || p.name;
-    // 시·도와 시·군·구 이름(○○시 → ○○)으로 같은 이름의 다른 곳을 걸러 낸다. 볼거리는 관광지 이름도 함께 본다
-    const region = [p.sido, SIDO_FULL[p.sido], ...String(p.sigungu || '').split(/[\s,·]+/).map((w) => w.replace(/(특별자치시|광역시|시|군|구)$/, ''))]
-      .filter((w) => w && w.length >= 2);
-    const ctx = [q, ...region];
-    jobs.push([p.id, '', q, region]);
+    // 볼거리는 지역 이름과 관광지 이름으로 같은 대상인지 확인한다
+    const ctx = [p.guide?.q || p.name, ...regionWords(p)];
+    jobs.push([p.id, '', p, null]);
     (p.guide?.points || []).forEach((pt) => jobs.push([p.id, pt, pt, ctx]));
   }
   let done = 0;
   const out = {};
   const run = async ([id, point, name, ctx]) => {
     let r = null;
-    // 관광지는 '경주 대릉원' → '대릉원'처럼 앞의 지역 이름을 뗀 이름도 찾아본다
-    const names = point ? candidates(name)
-      : [...new Set([name, name.replace(/^(\S+)\s+/, (m, w) => (ctx.some((c) => norm(c) === norm(w)) ? '' : m))])].map((n) => ({ n, strict: false }));
-    for (const { n, strict } of names) {
+    if (!point) r = await lookupPlace(name);
+    else for (const { n, strict } of candidates(name)) {
       r = await lookup(n, ctx);
       // 제목이 찾은 이름보다 짧으면(메타세쿼이아길 → 메타세쿼이아) 다른 대상일 수 있어 strict로 본다
       const shorter = r && norm(r.title).length < norm(n).length;
