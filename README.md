@@ -65,7 +65,8 @@ js/pamphlet.js         공유용 팜플렛 HTML 생성 (외부 파일 없는 한
 js/enrich.js           팜플렛용 사진·설명 찾기 (TourAPI → 위키백과)
 js/views/*.js          화면별 렌더링
 data/places.json       관광지 100곳 데이터
-data/guide.json        관광 포인트·특산 음식·지도 검색어
+data/guide.json        특산 음식·계절·관람 시간·지도 검색어
+data/points.json       주요 관광 포인트와 한 줄 소개 (tools/points/*.mjs를 고치고 node tools/points/build.mjs로 만듦)
 icons/                 앱 아이콘
 ```
 

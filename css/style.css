@@ -226,7 +226,9 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .detail .panel { margin-top: 14px; }
 .guide h3 { font-size: 14px; color: var(--ink-2); margin: 16px 0 8px; }
 .guide h3:first-of-type { margin-top: 0; }
-.points { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.points { margin: 0; padding-left: 18px; display: grid; gap: 8px; }
+.points b { font-weight: 600; }
+.points span { display: block; font-size: 13px; color: var(--ink-2); line-height: 1.45; }
 .points li::marker { color: var(--accent); }
 .foods { display: flex; flex-wrap: wrap; gap: 6px; }
 .maplink { text-decoration: none; }

@@ -63,7 +63,7 @@ function guideSection(place) {
       <h2>여행 정보</h2>
       ${g?.points?.length ? `
         <h3>주요 관광 포인트</h3>
-        <ul class="points">${g.points.map((p) => `<li>${esc(p)}</li>`).join('')}</ul>` : ''}
+        <ul class="points">${g.points.map((p) => `<li><b>${esc(p)}</b>${g.pointDesc?.[p] ? `<span>${esc(g.pointDesc[p])}</span>` : ''}</li>`).join('')}</ul>` : ''}
       <h3>특산·향토 음식</h3>
       ${g?.foods?.length
         ? `<div class="foods">${g.foods.map((f) => ext(naverMap(`${area} ${f}`), `${esc(f)} <span aria-hidden="true">↗</span>`, 'food')).join('')}</div>

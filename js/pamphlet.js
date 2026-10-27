@@ -41,18 +41,21 @@ function checklist({ season, mode, days }) {
 }
 
 // 외부 자료(위키백과·한국관광공사)에서 가져온 사진·설명. 출처를 꼭 붙인다
-const img = (src, alt, cls) => (/^https:///i.test(src || '')
+const img = (src, alt, cls) => (/^https:\/\//i.test(src || '')
   ? `<img class="${cls}" src="${esc(src)}" alt="${esc(alt)}" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : '');
-const credit = (r) => (r.url && /^https:///i.test(r.url)
-  ? `<a class="credit" href="${esc(r.url)}" target="_blank" rel="noopener">출처: ${esc(r.source)}</a>`
-  : `<span class="credit">출처: ${esc(r.source)}</span>`);
+const credit = (r, label = '출처') => (r.url && /^https:\/\//i.test(r.url)
+  ? `<a class="credit" href="${esc(r.url)}" target="_blank" rel="noopener">${label}: ${esc(r.source)}</a>`
+  : `<span class="credit">${label}: ${esc(r.source)}</span>`);
 
-function pointItem(p, r) {
-  if (!r) return `<li class="pt"><b>${esc(p)}</b></li>`;
+// d: 앱에 들어 있는 한 줄 소개, r: 외부 자료(사진·설명). 한 줄 소개가 있으면 그것을 쓰고 외부 자료는 사진만 붙인다
+function pointItem(p, d, r) {
+  const text = d || r?.text;
+  const pic = r ? img(r.image, p, 'pt-img') : '';
+  if (!pic) return `<li class="pt"><b>${esc(p)}</b>${text ? `<p>${esc(text)}</p>` : ''}${!d && r ? credit(r) : ''}</li>`;
   return `
     <li class="pt rich">
-      ${img(r.image, p, 'pt-img')}
-      <div><b>${esc(p)}</b>${r.text ? `<p>${esc(r.text)}</p>` : ''}${credit(r)}</div>
+      ${pic}
+      <div><b>${esc(p)}</b>${text ? `<p>${esc(text)}</p>` : ''}${credit(r, d ? '사진' : '출처')}</div>
     </li>`;
 }
 
@@ -72,7 +75,7 @@ function placeCard(s, { season, includePicks }) {
       ${hero?.text ? `<p class="about">${esc(hero.text)} ${credit(hero)}</p>` : ''}
       ${g.points?.length ? `
         <h4>주요 관광 포인트</h4>
-        <ul class="pts">${g.points.map((p) => pointItem(p, info.points[p])).join('')}</ul>` : ''}
+        <ul class="pts">${g.points.map((p) => pointItem(p, g.pointDesc?.[p], info.points[p])).join('')}</ul>` : ''}
       ${g.foods?.length ? `
         <h4>꼭 먹어 볼 음식</h4>
         <p class="foods">${g.foods.map((f) => `<a href="${esc(naverMap(`${area} ${f}`))}" target="_blank" rel="noopener">${esc(f)}</a>`).join('')}</p>` : ''}

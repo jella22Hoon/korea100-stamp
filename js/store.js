@@ -31,7 +31,14 @@ export async function load() {
   // 여행 정보는 없어도 앱이 동작하도록 실패를 허용한다
   try {
     const g = await fetch('data/guide.json').then((r) => (r.ok ? r.json() : null));
-    loadedGuide = JSON.stringify(g);
+    // 한 줄 소개가 붙은 주요 관광 포인트(points.json)가 있으면 guide의 포인트 목록을 대신한다
+    const pts = await fetch('data/points.json').then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    loadedGuide = JSON.stringify([g, pts]);
+    for (const [id, list] of Object.entries(pts?.points || {})) {
+      if (!g?.guide?.[id]) continue;
+      g.guide[id].points = list.map((x) => x.n);
+      g.guide[id].pointDesc = Object.fromEntries(list.map((x) => [x.n, x.d]));
+    }
     state.guideMeta = g?.meta || null;
     state.guide = g?.guide || {};
   } catch {
@@ -96,10 +103,10 @@ export async function checkForUpdate() {
     await reg.update().catch(() => {});
     if (reg.installing || reg.waiting) changed = true;
   }
-  const [p, g] = await Promise.all(['data/places.json', 'data/guide.json']
-    .map((u) => fetch(u, { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null))));
+  const [p, g, pts] = await Promise.all(['data/places.json', 'data/guide.json', 'data/points.json']
+    .map((u) => fetch(u, { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null)));
   if (p && JSON.stringify(p.places) !== JSON.stringify(state.places)) changed = true;
-  if (g && JSON.stringify(g) !== loadedGuide) changed = true;
+  if (g && JSON.stringify([g, pts]) !== loadedGuide) changed = true;
   return changed;
 }
 
