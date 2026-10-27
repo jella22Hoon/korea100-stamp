@@ -1,7 +1,80 @@
 import { state } from '../store.js';
 import { SIDO_ORDER, CATEGORIES, esc, formatDate, stars, storage } from '../util.js';
+import { km, driveHours, fmtHours } from '../recommend.js';
 
 const FILTER_KEY = 'korea100.filters';
+
+// 사용자가 버튼을 눌렀을 때만 한 번 위치를 가져온다. 화면을 오가도 마지막 결과를 유지하고 자동 갱신은 하지 않는다.
+let nearby = null; // { lat, lng, at }
+let locating = false;
+
+function nearestPlaces(pos, n = 3) {
+  const here = [pos.lat, pos.lng];
+  return state.places
+    .map((p) => ({ place: p, area: state.guide[p.id]?.area }))
+    .filter((x) => x.area)
+    .map((x) => ({ ...x, dist: km(here, x.area), drive: driveHours(here, x.area) }))
+    .sort((a, b) => a.dist - b.dist)
+    .slice(0, n);
+}
+
+function fmtKm(d) {
+  return d < 1 ? '1km 이내' : `약 ${d < 10 ? d.toFixed(1) : Math.round(d)}km`;
+}
+
+function renderNearby(box) {
+  if (locating) {
+    box.innerHTML = '<p class="nearby-msg">📍 현재 위치를 확인하는 중…</p>';
+    return;
+  }
+  if (!nearby) {
+    box.innerHTML = `
+      <button type="button" class="btn nearby-find" id="nearby-find">📍 내 주변 관광지 찾기</button>
+      <p class="hint small">버튼을 누를 때만 위치를 한 번 확인해요. 계속 추적하지 않아요.</p>`;
+  } else {
+    const at = new Date(nearby.at);
+    const time = `${at.getHours()}시 ${String(at.getMinutes()).padStart(2, '0')}분`;
+    box.innerHTML = `
+      <div class="nearby-head">
+        <h2>📍 내 주변 관광지</h2>
+        <button type="button" class="btn small" id="nearby-find">다시 찾기</button>
+      </div>
+      <ol class="nearby-list">
+        ${nearestPlaces(nearby).map(({ place, dist, drive }) => {
+          const visited = state.visits.has(place.id);
+          return `
+            <li><a href="#/place/${place.id}" class="${visited ? 'visited' : ''}">
+              <span class="nearby-name">${esc(place.name)}${visited ? ' <span class="mini-stamp">방문</span>' : ''}</span>
+              <span class="nearby-meta">${esc(place.sido)} · ${esc(place.sigungu)} · ${fmtKm(dist)}${dist >= 1 ? ` · 차로 약 ${fmtHours(drive)}` : ''}</span>
+            </a></li>`;
+        }).join('')}
+      </ol>
+      <p class="hint small">${time} 위치 기준이에요. 거리는 직선거리와 대략 위치로 계산한 추정값이에요.</p>`;
+  }
+  box.querySelector('#nearby-find').addEventListener('click', () => locate(box));
+}
+
+function locate(box) {
+  if (!navigator.geolocation || !window.isSecureContext) {
+    box.querySelector('.nearby-err')?.remove();
+    box.insertAdjacentHTML('beforeend', '<p class="nearby-msg nearby-err">이 화면에서는 위치를 쓸 수 없어요. https 주소로 접속했는지 확인해 주세요.</p>');
+    return;
+  }
+  locating = true;
+  renderNearby(box);
+  navigator.geolocation.getCurrentPosition((pos) => {
+    locating = false;
+    nearby = { lat: pos.coords.latitude, lng: pos.coords.longitude, at: Date.now() };
+    renderNearby(box);
+  }, (err) => {
+    locating = false;
+    renderNearby(box);
+    const msg = err.code === 1
+      ? '위치 권한이 꺼져 있어요. 브라우저나 휴대폰 설정에서 이 사이트의 위치 권한을 허용해 주세요.'
+      : '위치를 가져오지 못했어요. 잠시 후 다시 시도해 주세요.';
+    box.insertAdjacentHTML('beforeend', `<p class="nearby-msg nearby-err">${msg}</p>`);
+  }, { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 });
+}
 
 const filters = storage.get(FILTER_KEY, { q: '', sido: '', category: '', status: 'all' });
 
@@ -51,6 +124,7 @@ export function renderList(root) {
       <h1>한국관광 100선</h1>
       <p class="sub"><strong>${state.visits.size}</strong> / ${state.places.length} 곳 방문</p>
     </header>
+    <section class="panel nearby" id="nearby" aria-live="polite"></section>
     <div class="filters">
       <label class="search">
         <span class="sr-only">검색</span>
@@ -104,4 +178,5 @@ export function renderList(root) {
   });
 
   renderResults();
+  renderNearby(root.querySelector('#nearby'));
 }

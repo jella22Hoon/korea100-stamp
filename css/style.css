@@ -96,6 +96,26 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .sub { margin: 2px 0 0; color: var(--ink-2); }
 .sub strong { color: var(--accent); font-size: 18px; }
 
+/* ── 내 주변 관광지 ── */
+.nearby { padding: 14px 16px; }
+.nearby-find { width: 100%; border-style: dashed; border-color: color-mix(in srgb, var(--accent) 50%, var(--line)); color: var(--accent); }
+.nearby .hint.small { margin-top: 8px; }
+.nearby-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.nearby-head h2 { margin: 0; font-size: 16px; }
+.nearby-list { list-style: none; margin: 0; padding: 0; counter-reset: near; }
+.nearby-list li + li { border-top: 1px solid var(--line); }
+.nearby-list a { display: grid; gap: 1px; padding: 9px 0 9px 30px; text-decoration: none; position: relative; counter-increment: near; }
+.nearby-list a::before {
+  content: counter(near); position: absolute; left: 0; top: 11px; width: 22px; height: 22px; border-radius: 50%;
+  background: var(--accent); color: var(--accent-ink); font-size: 12px; font-weight: 700; display: grid; place-items: center;
+}
+.nearby-list a.visited::before { background: var(--surface-2); color: var(--ink-2); }
+.nearby-name { font-weight: 600; word-break: keep-all; }
+.nearby-meta { font-size: 13px; color: var(--ink-2); }
+.mini-stamp { font-size: 11px; font-weight: 700; color: var(--stamp); border: 1.5px solid var(--stamp); border-radius: 4px; padding: 0 4px; margin-left: 2px; }
+.nearby-msg { margin: 0; color: var(--ink-2); font-size: 14px; }
+.nearby-err { margin-top: 8px; color: var(--danger); }
+
 /* ── 필터 ── */
 .filters { display: grid; gap: 10px; margin-bottom: 8px; }
 

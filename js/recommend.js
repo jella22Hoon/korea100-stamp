@@ -34,7 +34,7 @@ export function seasonOf(month) {
   return '겨울';
 }
 
-function km(a, b) {
+export function km(a, b) {
   const R = 6371;
   const toRad = (d) => (d * Math.PI) / 180;
   const dLat = toRad(b[0] - a[0]);
@@ -44,7 +44,7 @@ function km(a, b) {
 }
 
 // 자동차 이동 시간 추정: 직선거리 × 도로 우회 1.3 ÷ 평균 70km/h + 출발 준비 0.2h
-function driveHours(a, b) {
+export function driveHours(a, b) {
   const d = km(a, b);
   return d < 1 ? 0 : (d * 1.3) / 70 + 0.2;
 }
