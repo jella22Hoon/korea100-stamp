@@ -1,5 +1,5 @@
 // 앱 파일을 캐시해 오프라인에서도 열리게 한다. 파일을 바꾸면 CACHE 버전을 올릴 것.
-const CACHE = 'korea100-v13';
+const CACHE = 'korea100-v14';
 const SHELL = [
   './',
   'index.html',

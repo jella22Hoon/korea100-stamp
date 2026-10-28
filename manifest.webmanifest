@@ -3,7 +3,7 @@
   "short_name": "관광100선",
   "description": "2025-2026 한국관광 100선 방문 기록",
   "lang": "ko",
-  "start_url": "./#/list",
+  "start_url": "./#/home",
   "scope": "./",
   "display": "standalone",
   "background_color": "#fbf6ef",

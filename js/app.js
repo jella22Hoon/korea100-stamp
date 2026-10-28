@@ -64,6 +64,12 @@ async function start() {
     view.innerHTML = `<p class="empty">데이터를 불러오지 못했어요.<br><small>로컬 서버로 실행했는지 확인해 주세요 (README 참고).</small></p>`;
     return;
   }
+  // 앱을 새로 열면 홈부터 보여 준다. 예전에 설치한 바로가기는 #/list로 열려서 이것도 홈으로 돌린다
+  // (새로고침·뒤로 가기는 보던 화면 그대로)
+  const nav = performance.getEntriesByType?.('navigation')?.[0]?.type;
+  if (nav !== 'reload' && nav !== 'back_forward' && ['', '#', '#/', '#/list'].includes(location.hash)) {
+    history.replaceState(null, '', `${location.pathname}${location.search}#/home`);
+  }
   window.addEventListener('hashchange', route);
   route();
 
