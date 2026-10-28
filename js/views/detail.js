@@ -1,6 +1,6 @@
 import { state, isUnverified, saveVisit, deleteVisit, isCustom, isSpot, officialVisits, deleteCustomPlace, saveCustomPlace, refreshOnePlace } from '../store.js';
 import { getPhotos, getPicks, savePick, deletePick } from '../db.js';
-import { esc, formatDate, stars, today, uid, resizeImage, toast, MAX_PHOTOS, naverMap } from '../util.js';
+import { esc, formatDate, stars, today, uid, resizeImage, toast, MAX_PHOTOS, naverMap, blogLinks } from '../util.js';
 import { seasonOf, fmtHours, planCourse, TRIPS, SEASONS } from '../recommend.js';
 import { carRoute, transitGuide, roughDrive, TICKET_LINKS } from '../directions.js';
 import { openOriginSheet } from './origin-sheet.js';
@@ -63,7 +63,7 @@ function startOptions() {
   const plan = planOrigin();
   const opts = [['plan', `${plan.address ? '🏠' : '🏙'} ${plan.name}`], ['here', '📍 지금 있는 곳']];
   savedOrigins().forEach((o) => { if (o.name !== plan.name) opts.push([`saved:${o.id}`, `🏠 ${o.name}`]); });
-  opts.push(['__search', '🔍 주소로 찾기…']);
+  opts.push(['__search', '🗺 지도에서 고르기…']);
   return opts.map(([v, l]) => `<option value="${esc(v)}" ${routeStart === v ? 'selected' : ''}>${esc(l)}</option>`).join('');
 }
 
@@ -148,6 +148,9 @@ function guideSection(place) {
         ${ext(kakaoMap(`${q} 숙소`), '<b>K</b> 숙소', 'kakao')}
       </div>
       <p class="hint small">지도 앱에서 리뷰 많은 순이나 별점 순으로 정렬하면 평판 좋은 곳을 찾기 쉬워요.</p>
+      <h3>블로그 후기</h3>
+      <ul class="blogs">${blogLinks(q).map(([label, url, by]) => `<li>${ext(url, `<b class="by-${by}">${by}</b> ${esc(label)} <span aria-hidden="true">↗</span>`, 'blog')}</li>`).join('')}</ul>
+      <p class="hint small">네이버·다음 블로그 검색이 관련도순으로 열려요. 위쪽 글일수록 많이 읽힌 글인 경우가 많아요.</p>
     </section>
     ${isSpot(place) ? '' : `<section class="panel">
       <div class="panel-head">

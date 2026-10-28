@@ -72,6 +72,6 @@ export function originOptions(p = prefs()) {
     ...(p.saved || []).map((s) => `<option value="saved:${esc(s.id)}" ${cur === `saved:${s.id}` ? 'selected' : ''}>🏠 ${esc(s.name)}</option>`),
     p.here ? `<option value="here" ${cur === 'here' ? 'selected' : ''}>📍 현재 위치</option>` : '',
     ...ORIGINS.map((o) => `<option value="${o.name}" ${cur === o.name ? 'selected' : ''}>${o.name}</option>`),
-    '<option value="__search">🔍 주소로 찾기…</option>',
+    '<option value="__search">🗺 지도에서 고르기…</option>',
   ].join('');
 }

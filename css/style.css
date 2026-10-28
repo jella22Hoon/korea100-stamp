@@ -565,3 +565,22 @@ button.card { width: 100%; text-align: left; font: inherit; color: inherit; curs
 .way-links { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 13px; margin: 0 0 8px; }
 .way-links a { color: var(--accent); }
 .way .maplink.wide { margin-top: 2px; }
+
+/* ── 지도에서 출발지 고르기 ── */
+.home-origin { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.home-origin select { flex: 1; }
+.home-origin button { flex: none; width: 34px; height: 30px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); font-size: 16px; cursor: pointer; }
+.os-map-wrap { position: relative; margin: 10px 0 6px; }
+.os-map { height: min(48vh, 340px); border-radius: 14px; overflow: hidden; border: 1px solid var(--line); background: var(--surface-2); display: grid; place-items: center; }
+.os-cross { position: absolute; left: 50%; top: 50%; translate: -50% -50%; font-size: 28px; color: var(--accent); text-shadow: 0 0 3px #fff, 0 0 6px #fff; pointer-events: none; z-index: 500; }
+.os-here { position: absolute; right: 10px; bottom: 22px; z-index: 500; box-shadow: var(--shadow); }
+.os-addr { font-size: 14px; margin: 0 0 12px; word-break: keep-all; }
+.os-addr a { color: var(--accent); white-space: nowrap; font-size: 13px; }
+.os-map .leaflet-control-attribution { font-size: 10px; }
+
+/* ── 블로그 후기 ── */
+.blogs { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.maplink.blog { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); font-weight: 600; font-size: 14px; color: var(--ink); }
+.maplink.blog span { margin-left: auto; color: var(--ink-2); }
+.maplink b.by-N { background: #03c75a; color: #fff; }
+.maplink b.by-D { background: #ff5a4a; color: #fff; }

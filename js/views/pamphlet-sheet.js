@@ -4,6 +4,8 @@ import { buildPamphlet } from '../pamphlet.js';
 import { esc, today, toast, downloadFile, storage } from '../util.js';
 import { enrichPlaces } from '../enrich.js';
 import { trip } from '../trip.js';
+import { planOrigin } from '../plan.js';
+import { carRoute, transitGuide, roughDrive, TICKET_LINKS } from '../directions.js';
 
 const MEMBERS_KEY = 'korea100.members';
 
@@ -79,6 +81,24 @@ export function openPamphletSheet(course) {
       .catch(() => { enrichJob = null; status.textContent = '사진·설명을 불러오지 못했어요. 이름만 넣을게요.'; });
     return enrichJob;
   }
+  // 출발지 → 첫 여행지 가는 방법을 미리 계산해 둔다(팜플렛에 넣는다)
+  const origin = course.origin || planOrigin();
+  const first = stops[0];
+  const firstArea = first && state.guide[first.id]?.area;
+  let route = null;
+  const routeJob = firstArea && origin?.lat != null ? (async () => {
+    const from = [origin.lat, origin.lng];
+    const transit = transitGuide(from, firstArea, first.name);
+    let car = null;
+    if (transit.kind !== 'air' && transit.kind !== 'ferry') {
+      car = await carRoute(from, firstArea).catch(() => null) || { ...roughDrive(from, firstArea), rough: true };
+    }
+    route = {
+      from: origin.name, fromAddr: origin.address || '', to: first.name, q: state.guide[first.id]?.q || first.name,
+      car, transit, tickets: TICKET_LINKS[transit.kind] || [],
+    };
+  })() : Promise.resolve();
+
   const photosBox = form.querySelector('[name="photos"]');
   if (photosBox.checked) startEnrich();
   photosBox.addEventListener('change', () => {
@@ -100,6 +120,7 @@ export function openPamphletSheet(course) {
     const includePicks = fd.get('picks') === 'on';
     const withPhotos = fd.get('photos') === 'on';
     if (withPhotos && !info) await Promise.race([startEnrich(), new Promise((r) => setTimeout(r, 4000))]);
+    if (!route) await Promise.race([routeJob, new Promise((r) => setTimeout(r, 4000))]);
     const days = await Promise.all(course.days.map((d) => Promise.all(d.map(async (s) => ({
       ...state.placeById.get(s.id),
       leg: s.leg || 0,
@@ -112,6 +133,7 @@ export function openPamphletSheet(course) {
       title,
       startDate: fd.get('startDate') || '',
       people: trip.people,
+      route,
       members,
       note: String(fd.get('note')).trim(),
       season: course.season,

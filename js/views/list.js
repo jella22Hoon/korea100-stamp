@@ -115,7 +115,7 @@ function planHtml() {
     </div>
     <div class="plan-origin"><span>출발지</span>
       <select id="plan-origin" aria-label="출발지">${originOptions()}</select>
-      <button type="button" class="btn small" data-plan="origin">🔍 주소</button>
+      <button type="button" class="btn small" data-plan="origin">🗺 지도</button>
     </div>
     ${origin.address ? `<p class="plan-addr">${esc(origin.address)} <a href="${esc(naverMap(origin.address))}" target="_blank" rel="noopener noreferrer">네이버 지도에서 확인 ↗</a></p>` : ''}
     ${c ? `

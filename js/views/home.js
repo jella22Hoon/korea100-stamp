@@ -35,9 +35,12 @@ export function renderHome(root) {
               <button type="button" data-step="1" aria-label="한 명 늘리기">+</button>
             </div>
           </div>
-          <label class="home-field"><span>출발지</span>
-            <select name="origin">${originOptions()}</select>
-          </label>
+          <div class="home-field"><span>출발지</span>
+            <div class="home-origin">
+              <select name="origin" aria-label="출발지">${originOptions()}</select>
+              <button type="button" id="home-map" aria-label="지도에서 출발지 고르기">🗺</button>
+            </div>
+          </div>
         </div>
         <button type="submit" class="btn primary big home-go" id="home-go"></button>
       </form>
@@ -60,10 +63,12 @@ export function renderHome(root) {
     saveTrip({ people: n });
     form.elements.people.value = `${n}명`;
   }));
+  const pickOnMap = () => openOriginSheet(() => { form.elements.origin.innerHTML = originOptions(); });
+  root.querySelector('#home-map').addEventListener('click', pickOnMap);
   form.elements.origin.addEventListener('change', (e) => {
     if (e.target.value === '__search') {
       e.target.innerHTML = originOptions();
-      openOriginSheet(() => { e.target.innerHTML = originOptions(); });
+      pickOnMap();
       return;
     }
     setPlanOrigin(e.target.value);

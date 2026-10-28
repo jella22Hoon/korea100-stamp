@@ -14,6 +14,14 @@ export const SIDO_CENTER = {
 
 export const naverMap = (q) => `https://map.naver.com/p/search/${encodeURIComponent(q)}`;
 
+// 블로그 후기 검색 링크(관련도순). 네이버·다음은 글 목록과 조회수를 앱에 주지 않아(키·서버 필요) 검색 결과로 연결한다
+export const blogLinks = (q) => [
+  ['여행 후기', `https://search.naver.com/search.naver?ssc=tab.blog.all&query=${encodeURIComponent(`${q} 여행 후기`)}`, 'N'],
+  ['코스·가볼만한 곳', `https://search.naver.com/search.naver?ssc=tab.blog.all&query=${encodeURIComponent(`${q} 코스 추천`)}`, 'N'],
+  ['맛집 후기', `https://search.naver.com/search.naver?ssc=tab.blog.all&query=${encodeURIComponent(`${q} 맛집`)}`, 'N'],
+  ['티스토리·다음 블로그', `https://search.daum.net/search?w=blog&q=${encodeURIComponent(`${q} 여행`)}`, 'D'],
+];
+
 // 오픈스트리트맵 주소 정보를 '시·도 시·군·구 도로명 번호' 순서로 만든다. 네이버 지도 검색어로 쓴다.
 // 예: { city: 서울특별시, borough: 마포구, road: 월드컵로, house_number: 240 } → '서울특별시 마포구 월드컵로 240'
 function koreanAddress(a = {}, name = '') {
@@ -30,6 +38,15 @@ function koreanAddress(a = {}, name = '') {
  * 주소나 장소 이름으로 위치를 찾는다(오픈스트리트맵 Nominatim). 버튼을 누를 때만 한 번 요청한다.
  * → [{ lat, lng, label(원래 표기), address(한국식 주소), name(장소 이름) }]
  */
+// 지도에서 고른 점의 주소(오픈스트리트맵). 못 찾으면 ''
+export async function reverseGeocode(lat, lng) {
+  const url = `https://nominatim.openstreetmap.org/reverse?${new URLSearchParams({ lat, lon: lng, format: 'jsonv2', 'accept-language': 'ko', addressdetails: 1, zoom: 18 })}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(String(res.status));
+  const r = await res.json();
+  return r.address ? koreanAddress(r.address, r.name) || r.display_name : '';
+}
+
 export async function geocode(q, limit = 5) {
   const url = `https://nominatim.openstreetmap.org/search?${new URLSearchParams({ q, format: 'jsonv2', limit, countrycodes: 'kr', 'accept-language': 'ko', addressdetails: 1 })}`;
   const res = await fetch(url);

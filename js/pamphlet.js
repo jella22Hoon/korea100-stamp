@@ -1,5 +1,5 @@
 // 함께 가는 사람과 나눌 여행 팜플렛을 외부 파일 없는 HTML 한 장으로 만든다.
-import { esc } from './util.js';
+import { esc, blogLinks } from './util.js';
 import { fmtHours } from './recommend.js';
 
 const SEASON_ICON = { 봄: '🌸', 여름: '🌊', 가을: '🍁', 겨울: '❄️' };
@@ -92,6 +92,8 @@ function placeCard(s, { season, includePicks }) {
         <a href="${esc(kakaoMap(`${q} 숙소`))}" target="_blank" rel="noopener">카카오 숙소</a>
       </p>
       <p class="tip">평점이 높은 곳은 지도에서 '리뷰 많은순'이나 '별점순'으로 정렬해 고르세요.</p>
+      <h4>블로그 후기</h4>
+      <p class="links">${blogLinks(q).map(([label, url, by]) => `<a href="${esc(url)}" target="_blank" rel="noopener">✍️ ${by === 'D' ? '' : '네이버 '}${esc(label)}</a>`).join('')}</p>
       <p class="links">
         <a href="${esc(naverMap(q))}" target="_blank" rel="noopener">📍 위치 (네이버 지도)</a>
         <a href="${esc(kakaoMap(q))}" target="_blank" rel="noopener">📍 카카오맵</a>
@@ -99,12 +101,35 @@ function placeCard(s, { season, includePicks }) {
     </article>`;
 }
 
+// 출발지 → 첫 여행지 가는 방법(자동차 경로와 대중교통 어림)
+function routeBox(r) {
+  if (!r) return '';
+  const range = ([a, b]) => `${fmtHours(a)} ~ ${fmtHours(b)}`;
+  return `
+  <section class="route">
+    <h2>🧭 가는 방법</h2>
+    <p class="from">${esc(r.from)}${r.fromAddr ? ` <span>(${esc(r.fromAddr)})</span>` : ''} → <b>${esc(r.to)}</b></p>
+    <div class="way">
+      <h3>🚗 자동차 <span>${r.car ? `약 ${fmtHours(r.car.hours)}` : ''}</span></h3>
+      ${r.car ? `<p>${r.car.rough ? '직선거리로 어림한' : '도로 기준'} 약 ${Math.round(r.car.km)}km${r.car.rough ? '' : ' · 막히는 시간은 반영되지 않았어요'}</p>
+      ${r.car.roads?.length ? `<p>주로 ${r.car.roads.map(esc).join(' → ')}</p>` : ''}` : '<p>바다를 건너야 해서 자동차 경로는 계산하지 않았어요.</p>'}
+    </div>
+    <div class="way">
+      <h3>${r.transit.kind === 'air' ? '✈️ 비행기·대중교통' : r.transit.kind === 'ferry' ? '⛴ 배·대중교통' : '🚌 대중교통'} <span>대략 ${range(r.transit.hours)}</span></h3>
+      <ol>${r.transit.steps.map((x) => `<li>${esc(x)}</li>`).join('')}</ol>
+      ${r.tickets?.length ? `<p class="links">${r.tickets.map(([n, u]) => `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(n)} 예매</a>`).join('')}</p>` : ''}
+    </div>
+    <p class="links"><a class="strong" href="${esc(naverMap(r.q))}" target="_blank" rel="noopener">📍 네이버 지도에서 길찾기</a></p>
+    <p class="tip">대중교통 시간은 거리로 어림한 값이에요. 정확한 노선·배차·요금은 네이버 지도에서 확인하세요.</p>
+  </section>`;
+}
+
 /**
- * spec: { title, startDate, members:[], note, season, mode, oneWay, originName, includePicks,
+ * spec: { title, startDate, members:[], note, season, mode, oneWay, originName, includePicks, route,
  *         days: [[{ ...place, guide, picks, leg }]] }
  */
 export function buildPamphlet(spec) {
-  const { title, startDate, members = [], note, season, mode, oneWay, originName, days, people } = spec;
+  const { title, startDate, members = [], note, season, mode, oneWay, originName, days, people, route } = spec;
   const range = dateRange(startDate, days.length);
   const places = days.flat();
   const travel = mode === 'air' ? '✈️ 항공 이동'
@@ -156,6 +181,15 @@ ul { margin:0; padding-left:18px; }
 .picks a { color:inherit; }
 .hero { display:block; width:calc(100% + 36px); margin:-16px -18px 12px; aspect-ratio:16/9; object-fit:cover; border-radius:16px 16px 0 0; background:var(--soft); }
 .about { margin:10px 0 0; font-size:14px; }
+.route { background:var(--paper); border:1px solid var(--line); border-radius:16px; padding:16px 18px; margin:14px 0; break-inside:avoid; }
+.route h2 { margin:0 0 8px; }
+.route .from { margin:0 0 10px; font-size:14px; }
+.route .from span { color:var(--ink2); font-size:12px; }
+.route .way { border:1px solid var(--line); border-radius:12px; padding:10px 12px; margin-bottom:8px; }
+.route .way h3 { margin:0 0 4px; font-size:15px; display:flex; justify-content:space-between; gap:8px; }
+.route .way h3 span { color:var(--accent); white-space:nowrap; }
+.route .way p, .route .way ol { margin:4px 0; font-size:13px; }
+.route .way ol { padding-left:18px; }
 .credit { display:inline-block; font-size:11px; color:var(--ink2); text-decoration:none; }
 a.credit { text-decoration:underline; }
 .pts { list-style:none; padding:0; display:grid; gap:8px; }
@@ -200,6 +234,8 @@ footer { margin-top:32px; color:var(--ink2); font-size:12px; text-align:center; 
     <div><b>${places.length}곳</b><span>${places.every((p) => !p.custom && !p.spot) ? '한국관광 100선' : '여행지'}</span></div>
     ${places.some((p) => p.guide?.hours) ? `<div><b>약 ${fmtHours(places.reduce((s, p) => s + (p.guide?.hours || 0), 0))}</b><span>관광 시간 합계</span></div>` : ''}
   </section>
+
+  ${routeBox(route)}
 
   ${days.map((d, i) => `
     <h2>${days.length > 1 ? dayLabel(startDate, i) : (startDate ? dateRange(startDate, 1) : '일정')}</h2>
