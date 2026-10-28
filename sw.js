@@ -1,5 +1,5 @@
 // 앱 파일을 캐시해 오프라인에서도 열리게 한다. 파일을 바꾸면 CACHE 버전을 올릴 것.
-const CACHE = 'korea100-v11';
+const CACHE = 'korea100-v12';
 const SHELL = [
   './',
   'index.html',
@@ -13,6 +13,11 @@ const SHELL = [
   'js/pamphlet.js',
   'js/enrich.js',
   'js/plan.js',
+  'js/trip.js',
+  'js/explore.js',
+  'js/directions.js',
+  'js/views/home.js',
+  'js/views/explore.js',
   'js/views/origin-sheet.js',
   'js/views/place-form.js',
   'js/views/recommend.js',

@@ -1,4 +1,6 @@
 import { load } from './store.js';
+import { renderHome } from './views/home.js';
+import { renderExplore } from './views/explore.js';
 import { renderList } from './views/list.js';
 import { renderDetail } from './views/detail.js';
 import { renderProgress } from './views/progress.js';
@@ -10,7 +12,7 @@ let cleanup = null;
 const scrollPos = new Map();
 
 function route() {
-  const hash = location.hash || '#/list';
+  const hash = location.hash || '#/home';
   const [, page, id] = hash.split('/');
 
   scrollPos.set(view.dataset.route, window.scrollY);
@@ -19,6 +21,12 @@ function route() {
   view.dataset.route = hash;
 
   switch (page) {
+    case 'list':
+      renderList(view);
+      break;
+    case 'explore':
+      renderExplore(view);
+      break;
     case 'place':
       cleanup = renderDetail(view, id);
       break;
@@ -32,10 +40,10 @@ function route() {
       renderSettings(view);
       break;
     default:
-      renderList(view);
+      renderHome(view);
   }
 
-  const tab = page === 'place' ? 'list' : (page || 'list');
+  const tab = page === 'place' ? 'list' : page === 'explore' ? 'home' : (page || 'home');
   document.querySelectorAll('.tabbar a').forEach((a) => {
     const on = a.dataset.tab === tab;
     a.classList.toggle('active', on);

@@ -7,6 +7,8 @@ import { SIDO_CENTER } from './util.js';
 
 const INFO_KEY = 'korea100.placeInfo';
 export const CUSTOM_KEY = 'korea100.customPlaces';
+const SPOT_KEY = 'korea100.spots'; // 홈 화면 검색으로 찾아 열어 본 곳(최근 순, 백업에는 넣지 않음)
+const MAX_SPOTS = 80;
 const ALL_SEASONS = ['봄', '여름', '가을', '겨울'];
 // 외부 자료 좌표가 기존 대략 위치에서 이보다 멀면 다른 곳으로 보고 쓰지 않는다
 const MAX_SHIFT_KM = 30;
@@ -17,6 +19,7 @@ export const state = {
   meta: null,
   places: [], // 공식 100선(읽기 전용)
   custom: [], // 사용자가 직접 추가한 여행지
+  spots: [], // 검색으로 찾아 열어 본 곳(내 여행지로 저장하기 전)
   placeById: new Map(), // 100선 + 추가한 여행지
   visits: new Map(),
   guide: {},
@@ -56,13 +59,14 @@ export async function load() {
 
 export const allPlaces = () => [...state.places, ...state.custom];
 export const isCustom = (place) => !!place?.custom;
+export const isSpot = (place) => !!place?.spot;
 // 100선 진행률에는 공식 관광지 방문만 센다
 export const officialVisits = () => state.places.filter((p) => state.visits.has(p.id)).length;
 
 // 추가한 여행지도 100선과 같은 모양의 여행 정보(guide)를 만들어 둔다
 function customGuide(c) {
   const hasXY = Number.isFinite(c.lat) && Number.isFinite(c.lng);
-  const area = hasXY ? [c.lat, c.lng] : SIDO_CENTER[c.sido] || null;
+  const area = hasXY ? [c.lat, c.lng] : c.approxArea || SIDO_CENTER[c.sido] || null;
   return {
     q: c.q || c.name,
     points: (c.points || []).map((x) => x.n),
@@ -79,16 +83,40 @@ function customGuide(c) {
 }
 
 function loadCustom() {
-  for (const c of state.custom) {
+  for (const c of [...state.custom, ...state.spots]) {
     delete state.guide[c.id];
     delete state.approx[c.id];
   }
   state.custom = (storage.get(CUSTOM_KEY, []) || []).filter((c) => c?.id && c.name);
-  for (const c of state.custom) {
+  state.spots = (storage.get(SPOT_KEY, []) || []).filter((c) => c?.id && c.name);
+  for (const c of [...state.custom, ...state.spots]) {
     state.guide[c.id] = customGuide(c);
     if (state.guide[c.id].areaRough && state.guide[c.id].area) state.approx[c.id] = state.guide[c.id].area;
   }
-  state.placeById = new Map(allPlaces().map((p) => [p.id, p]));
+  state.placeById = new Map([...allPlaces(), ...state.spots].map((p) => [p.id, p]));
+}
+
+/**
+ * 검색 결과를 상세 화면에서 열 수 있게 기억해 둔다. 같은 곳이면 같은 id를 돌려준다.
+ * spot: { name, lat, lng, sido, sigungu, category, note, image, wikiTitle, source, url, rough }
+ */
+export function registerSpot(spot) {
+  const key = `${spot.wikiTitle || spot.name}|${spot.lat.toFixed(3)}|${spot.lng.toFixed(3)}`;
+  const old = state.spots.find((x) => x.key === key);
+  const id = old?.id || `s${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+  const item = {
+    id, key, spot: true,
+    name: spot.name, sido: spot.sido || '', sigungu: spot.sigungu || '', category: spot.category || '도시',
+    description: null, note: spot.note || '', image: spot.image || '',
+    lat: spot.rough ? null : spot.lat, lng: spot.rough ? null : spot.lng,
+    approxArea: spot.rough ? [spot.lat, spot.lng] : null, // 좌표가 없는 문서는 목적지 중심으로 대신한다
+    q: spot.sigungu && !spot.name.includes(spot.sigungu.replace(/(시|군|구)$/, '')) ? `${spot.sigungu} ${spot.name}` : spot.name,
+    wikiTitle: spot.wikiTitle || '', source: spot.source || '', url: spot.url || '', hours: 2,
+  };
+  storage.set(SPOT_KEY, [item, ...state.spots.filter((x) => x.id !== id)].slice(0, MAX_SPOTS));
+  loadCustom();
+  applyInfo(state.info);
+  return id;
 }
 
 export function saveCustomPlace(place) {

@@ -1,10 +1,13 @@
-import { state, isUnverified, saveVisit, deleteVisit, isCustom, officialVisits, deleteCustomPlace } from '../store.js';
+import { state, isUnverified, saveVisit, deleteVisit, isCustom, isSpot, officialVisits, deleteCustomPlace, saveCustomPlace, refreshOnePlace } from '../store.js';
 import { getPhotos, getPicks, savePick, deletePick } from '../db.js';
 import { esc, formatDate, stars, today, uid, resizeImage, toast, MAX_PHOTOS, naverMap } from '../util.js';
-import { seasonOf } from '../recommend.js';
+import { seasonOf, fmtHours, planCourse, TRIPS, SEASONS } from '../recommend.js';
+import { carRoute, transitGuide, roughDrive, TICKET_LINKS } from '../directions.js';
+import { openOriginSheet } from './origin-sheet.js';
 import { openPamphletSheet } from './pamphlet-sheet.js';
 import { openPlaceForm } from './place-form.js';
-import { inPlan, togglePlan, savedOrigins } from '../plan.js';
+import { inPlan, togglePlan, savedOrigins, planOrigin, plan, savePlan } from '../plan.js';
+import { trip } from '../trip.js';
 
 const NEED = '<span class="need">확인 필요</span>';
 const PICK_TYPES = { food: '맛집', stay: '숙소' };
@@ -13,13 +16,23 @@ const kakaoMap = (q) => `https://map.kakao.com/?q=${encodeURIComponent(q)}`;
 const ext = (href, label, cls = '') => `<a class="maplink ${cls}" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${label}</a>`;
 const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
-// 길찾기 출발지: '' = 현재 위치, 아니면 저장한 출발지 id. 화면을 오가도 유지한다
-let routeStart = '';
+// 길찾기 출발지: 'plan' = 홈에서 고른 출발지, 'here' = 지금 위치, 'saved:id' = 저장한 출발지. 화면을 오가도 유지한다
+let routeStart = 'plan';
+let herePos = null; // 'here'를 고르면 한 번 위치를 받아 둔다
 
-// 네이버 지도 앱 길찾기. 출발지를 비워 두면 앱이 현재 위치에서 출발하도록 한다.
+function startPoint() {
+  if (routeStart === 'here') return herePos ? { name: '현재 위치', ...herePos, here: true } : null;
+  if (routeStart.startsWith('saved:')) {
+    const s = savedOrigins().find((o) => `saved:${o.id}` === routeStart);
+    if (s) return s;
+  }
+  return planOrigin();
+}
+
+// 네이버 지도 앱 길찾기. 출발지 좌표를 넘기고, 현재 위치면 비워 두어 앱이 지금 위치에서 출발하게 한다.
 // 앱이 없거나 PC면 네이버 지도 웹 검색으로 연다(웹에서 '길찾기'를 누르면 된다).
 function openRoute(mode, place) {
-  const start = savedOrigins().find((o) => o.id === routeStart);
+  const start = startPoint();
   const g = state.guide[place.id];
   const q = g?.q || place.name;
   const web = naverMap(q);
@@ -29,7 +42,7 @@ function openRoute(mode, place) {
   }
   const [lat, lng] = g.area;
   const params = new URLSearchParams({
-    ...(start ? { slat: start.lat, slng: start.lng, sname: start.name } : {}),
+    ...(start && !start.here ? { slat: start.lat, slng: start.lng, sname: start.name } : {}),
     dlat: lat, dlng: lng, dname: q, appname: location.hostname || 'korea100',
   });
   let left = false;
@@ -46,24 +59,69 @@ function openRoute(mode, place) {
   location.href = `nmap://route/${mode}?${params}`;
 }
 
+function startOptions() {
+  const plan = planOrigin();
+  const opts = [['plan', `${plan.address ? '🏠' : '🏙'} ${plan.name}`], ['here', '📍 지금 있는 곳']];
+  savedOrigins().forEach((o) => { if (o.name !== plan.name) opts.push([`saved:${o.id}`, `🏠 ${o.name}`]); });
+  opts.push(['__search', '🔍 주소로 찾기…']);
+  return opts.map(([v, l]) => `<option value="${esc(v)}" ${routeStart === v ? 'selected' : ''}>${esc(l)}</option>`).join('');
+}
+
 function routeSection(place) {
   const q = state.guide[place.id]?.q || place.name;
   return `
     <section class="panel route">
-      <h2>위치·교통</h2>
-      <p class="hint small route-lead">지도에서 위치를 보거나, 지금 있는 곳에서 가는 길과 시간을 확인해요.</p>
+      <h2>가는 방법</h2>
+      <label class="plan-origin"><span>출발</span><select id="route-from" aria-label="출발지">${startOptions()}</select></label>
+      <div id="route-body" aria-live="polite"><p class="hint small">가는 방법을 계산하는 중…</p></div>
       ${ext(naverMap(q), '<b>N</b> 네이버 지도에서 위치 보기', 'naver wide')}
-      ${savedOrigins().length ? `<div class="seg route-start" role="group" aria-label="길찾기 출발지">
-        <span class="hint small">출발</span>
-        ${[{ id: '', name: '📍 현재 위치' }, ...savedOrigins().map((o) => ({ id: o.id, name: `🏠 ${o.name}` }))]
-          .map((o) => `<button type="button" class="chip${routeStart === o.id ? ' active' : ''}" data-start="${esc(o.id)}" aria-pressed="${routeStart === o.id}">${esc(o.name)}</button>`).join('')}
-      </div>` : ''}
-      <div class="mapgrid">
-        <button type="button" class="maplink naver" data-route="public"><span aria-hidden="true">🚌</span> 대중교통으로</button>
-        <button type="button" class="maplink naver" data-route="car"><span aria-hidden="true">🚗</span> 자동차로</button>
-      </div>
-      <p class="hint small">길찾기는 네이버 지도 앱에서 ${savedOrigins().length ? '위에서 고른 곳' : '현재 위치'}을 출발지로 열려요. ${state.guide[place.id]?.areaExact ? '목적지는 받아 둔 관광지 좌표예요. 그래도' : '목적지는 관광지의 대략적인 위치라서,'} 넓은 곳은 앱에서 정확한 입구나 주차장으로 바꿔 주세요. 앱이 없으면 네이버 지도 웹이 열려요.</p>
+      <p class="hint small">${state.guide[place.id]?.areaExact ? '목적지는 받아 둔 관광지 좌표예요.' : '목적지는 관광지의 대략적인 위치예요.'} 넓은 곳은 네이버 지도에서 정확한 입구나 주차장으로 바꿔 주세요. 네이버 지도 앱이 없으면 웹이 열려요.</p>
     </section>`;
+}
+
+// 자동차·대중교통 이동 시간과 방법을 채운다
+async function fillRoute(box, place, isAlive) {
+  const area = state.guide[place.id]?.area;
+  const start = startPoint();
+  if (!area || !start) {
+    box.innerHTML = `<p class="hint small">${!area ? '이곳의 위치를 몰라 계산할 수 없어요.' : '지금 위치를 확인하지 못했어요.'}</p>`;
+    return;
+  }
+  const from = [start.lat, start.lng];
+  const label = place.name;
+  const t = transitGuide(from, area, label);
+  const fmtRange = ([a, b]) => `${fmtHours(a)} ~ ${fmtHours(b)}`;
+  const tickets = TICKET_LINKS[t.kind] || [];
+  const transitHtml = `
+    <div class="way">
+      <h3>${t.kind === 'air' ? '✈️ 비행기·대중교통' : t.kind === 'ferry' ? '⛴ 배·대중교통' : '🚌 대중교통'} <span class="way-time">대략 ${fmtRange(t.hours)}</span></h3>
+      <ol class="way-steps">${t.steps.map((x) => `<li>${esc(x)}</li>`).join('')}</ol>
+      ${tickets.length ? `<p class="way-links">${tickets.map(([n, u]) => `<a href="${u}" target="_blank" rel="noopener noreferrer">${n} 예매 ↗</a>`).join('')}</p>` : ''}
+      <button type="button" class="maplink naver wide" data-route="public"><b>N</b> 대중교통 경로·시간 정확히 보기</button>
+      <p class="hint small">거리로 어림한 시간이에요. 실제 노선·배차·요금은 네이버 지도에서 확인하세요.</p>
+    </div>`;
+  const carHtml = (r, rough) => `
+    <div class="way">
+      <h3>🚗 자동차 <span class="way-time">약 ${fmtHours(r.hours)}</span></h3>
+      <p class="way-meta">${rough ? '직선거리로 어림한' : '도로 기준'} 약 ${Math.round(r.km)}km${rough ? '' : ' · 막히는 시간은 반영되지 않아요'}</p>
+      ${r.roads?.length ? `<p class="way-roads">주로 ${r.roads.map(esc).join(' → ')}</p>` : ''}
+      <button type="button" class="maplink naver wide" data-route="car"><b>N</b> 자동차 길찾기 (실시간 교통)</button>
+    </div>`;
+  const paint = (car) => {
+    if (!isAlive()) return;
+    box.innerHTML = `
+      <p class="way-from">${esc(start.name)}${start.address ? ` · ${esc(start.address)}` : ''} → ${esc(label)}</p>
+      ${car === null ? '<div class="way"><h3>🚗 자동차</h3><p class="way-meta">바다를 건너야 해서 자동차 경로는 계산하지 않아요.</p></div>' : car ? carHtml(car.r, car.rough) : '<div class="way"><h3>🚗 자동차</h3><p class="way-meta">도로 경로를 계산하는 중…</p></div>'}
+      ${transitHtml}`;
+    box.querySelectorAll('[data-route]').forEach((b) => b.addEventListener('click', () => openRoute(b.dataset.route, place)));
+  };
+  paint(undefined);
+  try {
+    const r = await carRoute(from, area);
+    paint(r ? { r } : (t.kind === 'air' || t.kind === 'ferry' ? null : { r: roughDrive(from, area), rough: true }));
+  } catch {
+    paint({ r: roughDrive(from, area), rough: true });
+  }
 }
 
 function guideSection(place) {
@@ -91,18 +149,37 @@ function guideSection(place) {
       </div>
       <p class="hint small">지도 앱에서 리뷰 많은 순이나 별점 순으로 정렬하면 평판 좋은 곳을 찾기 쉬워요.</p>
     </section>
-    <section class="panel">
+    ${isSpot(place) ? '' : `<section class="panel">
       <div class="panel-head">
         <h2>내 맛집·숙소 메모</h2>
         <button type="button" class="btn small" id="pick-add">+ 추가</button>
       </div>
       <div id="picks"></div>
-    </section>
+    </section>`}
     <div class="row detail-actions">
       <button type="button" class="btn pamphlet-btn" id="plan-toggle" aria-pressed="${inPlan(place.id)}">${inPlan(place.id) ? '✓ 내 일정에 담김' : '🧳 내 일정에 담기'}</button>
       <button type="button" class="btn pamphlet-btn" id="pamphlet">📄 이곳만 팜플렛</button>
     </div>
-    <p class="hint small">담아 둔 곳은 목록 화면의 '내 여행 일정'에서 당일치기·1박 2일 등으로 나눠 팜플렛을 만들 수 있어요.</p>`;
+    <p class="hint small">담아 둔 곳은 100선 목록 화면의 '내 여행 일정'에서 여러 곳을 묶어 날짜별 팜플렛으로 만들 수 있어요.</p>`;
+}
+
+// 검색으로 찾은 곳을 내 여행지로 옮긴다(방문 기록·메모·백업을 쓸 수 있게). 새 id를 돌려준다
+function saveSpot(place) {
+  const g = state.guide[place.id];
+  const exact = g?.areaExact && g.area;
+  const id = `u${Date.now().toString(36)}`;
+  saveCustomPlace({
+    id, name: place.name, sido: place.sido, sigungu: place.sigungu, category: place.category,
+    description: null, lat: exact ? g.area[0] : null, lng: exact ? g.area[1] : null,
+    coordLabel: exact ? `${place.source || '검색'} 위치` : '', q: place.q || place.name,
+    points: [], foods: [], seasons: [...SEASONS], hours: place.hours || 2, createdAt: Date.now(), updatedAt: Date.now(),
+  });
+  if (inPlan(place.id)) {
+    plan.ids = plan.ids.map((x) => (x === place.id ? id : x));
+    savePlan();
+  }
+  refreshOnePlace(id);
+  return id;
 }
 
 // 상세 화면. 반환값은 화면을 떠날 때 호출할 정리 함수
@@ -129,6 +206,7 @@ export function renderDetail(root, placeId) {
     photos.sort((a, b) => visit.photoIds.indexOf(a.id) - visit.photoIds.indexOf(b.id));
     // 설정의 '관광지 정보 새로 받기'로 받아 둔 설명·사진·좌표(출처와 받은 날짜를 함께 표시)
     const info = state.info.items[place.id];
+    const image = info?.image || place.image;
     const at = state.info.updatedAt ? new Date(state.info.updatedAt) : null;
     const sourceName = `${esc(info?.source || '')}${at ? ` · ${at.getMonth() + 1}/${at.getDate()} 기준` : ''}`;
     const source = info ? (info.url && /^https:\/\//i.test(info.url)
@@ -137,28 +215,34 @@ export function renderDetail(root, placeId) {
 
     root.innerHTML = `
       <div class="detail${visit ? ' visited' : ''}">
-        <a class="back" href="#/list" aria-label="목록으로">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg> 목록
+        <a class="back" href="#/home" aria-label="뒤로">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg> 뒤로
         </a>
         <section class="hero">
-          <span class="hero-num">${isCustom(place) ? '내가 추가한 여행지' : `No. ${Number(place.id.slice(1))}`}</span>
+          <span class="hero-num">${isSpot(place) ? '🔍 검색으로 찾은 여행지' : isCustom(place) ? '내가 추가한 여행지' : `🏅 한국관광 100선 · No. ${Number(place.id.slice(1))}`}</span>
           <h1>${esc(place.name)}</h1>
           <p class="hero-meta">${esc(place.sido)}${place.sigungu ? ` · ${esc(place.sigungu)}` : ''}${place.unverified?.includes('sigungu') ? ' ' + NEED : ''} <span class="tag">${esc(place.category)}</span></p>
           ${visit ? '<span class="stamp big">VISITED</span>' : ''}
+          ${isSpot(place) ? `<div class="hero-tools">
+            <button type="button" class="btn small" id="spot-save">➕ 내 여행지로 저장</button>
+            ${/^https:\/\//i.test(place.url || '') ? `<a class="btn small ghost" href="${esc(place.url)}" target="_blank" rel="noopener noreferrer">${esc(place.source)}에서 보기 ↗</a>` : ''}
+          </div>` : ''}
           ${isCustom(place) ? `<div class="hero-tools">
             <button type="button" class="btn small" id="place-edit">여행지 고치기</button>
             <button type="button" class="btn small ghost danger" id="place-del">삭제</button>
           </div>` : ''}
         </section>
 
-        ${info?.image && /^https:\/\//i.test(info.image) ? `<img class="info-photo" src="${esc(info.image)}" alt="${esc(place.name)}" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}
+        ${image && /^https:\/\//i.test(image) ? `<img class="info-photo" src="${esc(image)}" alt="${esc(place.name)}" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}
         <dl class="info">
           <div><dt>설명</dt><dd>${!isUnverified(place, 'description') ? esc(place.description)
             : info?.text ? `${esc(info.text)} ${source}`
+              : isSpot(place) ? (place.note ? esc(place.note) : '<span class="hint small">설명을 찾는 중이거나 찾지 못했어요.</span>')
               : isCustom(place) ? '<span class="hint small">설명이 없어요. \'여행지 고치기\'에서 직접 적을 수 있어요.</span>' : NEED}</dd></div>
-          <div><dt>위치</dt><dd>${isCustom(place) && !isUnverified(place, 'lat') ? `${place.lat.toFixed(4)}, ${place.lng.toFixed(4)}${place.coordLabel ? ` <span class="hint small">${esc(place.coordLabel)}</span>` : ''}`
+          <div><dt>위치</dt><dd>${(isCustom(place) || isSpot(place)) && !isUnverified(place, 'lat') ? `${place.lat.toFixed(4)}, ${place.lng.toFixed(4)}${place.coordLabel ? ` <span class="hint small">${esc(place.coordLabel)}</span>` : ''}`
             : !isUnverified(place, 'lat') ? `${place.lat}, ${place.lng}`
             : state.guide[place.id]?.areaExact ? `${state.guide[place.id].area.map((n) => n.toFixed(4)).join(', ')} ${source}`
+              : isSpot(place) ? `${NEED} <span class="hint small">정확한 위치 자료가 없어 목적지 근처로 어림해요.</span>`
               : isCustom(place) ? `${NEED} <span class="hint small">지금은 ${esc(place.sido)}의 대략적인 중심으로 거리를 계산해요. '여행지 고치기'에서 위치를 찾아 주세요.</span>`
               : `${NEED} <span class="hint small">관광지 정보를 받으면 정확한 위치로 바뀌어요</span>`}</dd></div>
         </dl>
@@ -175,7 +259,8 @@ export function renderDetail(root, placeId) {
               <button type="button" class="btn" id="edit">기록 수정</button>
               <button type="button" class="btn ghost danger" id="remove">기록 취소</button>
             </div>
-          </section>` : `
+          </section>` : isSpot(place) ? `
+          <button type="button" class="btn primary big" id="spot-save-visit">➕ 내 여행지로 저장하고 방문 기록 남기기</button>` : `
           <button type="button" class="btn primary big" id="check">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg> 방문했어요
           </button>`}
@@ -183,15 +268,51 @@ export function renderDetail(root, placeId) {
         ${guideSection(place)}
       </div>`;
 
-    root.querySelectorAll('[data-route]').forEach((b) => b.addEventListener('click', () => openRoute(b.dataset.route, place)));
-    root.querySelectorAll('[data-start]').forEach((b) => b.addEventListener('click', () => {
-      routeStart = b.dataset.start;
-      root.querySelectorAll('[data-start]').forEach((x) => {
-        x.classList.toggle('active', x === b);
-        x.setAttribute('aria-pressed', x === b);
-      });
+    const routeBox = root.querySelector('#route-body');
+    const routeFrom = root.querySelector('#route-from');
+    const redrawRoute = () => {
+      routeFrom.innerHTML = startOptions();
+      fillRoute(routeBox, place, () => alive && routeBox.isConnected);
+    };
+    routeFrom.addEventListener('change', () => {
+      const v = routeFrom.value;
+      if (v === '__search') {
+        routeFrom.innerHTML = startOptions();
+        openOriginSheet(() => {
+          const s = savedOrigins()[0];
+          if (s) routeStart = `saved:${s.id}`;
+          redrawRoute();
+        });
+        return;
+      }
+      routeStart = v;
+      if (v === 'here' && !herePos) {
+        routeBox.innerHTML = '<p class="hint small">지금 위치를 확인하는 중…</p>';
+        navigator.geolocation?.getCurrentPosition((pos) => {
+          herePos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          redrawRoute();
+        }, () => {
+          toast('위치를 가져오지 못했어요');
+          routeStart = 'plan';
+          redrawRoute();
+        }, { timeout: 15000, maximumAge: 60000 });
+        return;
+      }
+      redrawRoute();
+    });
+    fillRoute(routeBox, place, () => alive && routeBox.isConnected);
+    root.querySelector('.back').addEventListener('click', (e) => {
+      if (history.length > 1) {
+        e.preventDefault();
+        history.back();
+      }
+    });
+    root.querySelector('#pick-add')?.addEventListener('click', () => openPickForm());
+    ['#spot-save', '#spot-save-visit'].forEach((sel) => root.querySelector(sel)?.addEventListener('click', () => {
+      const id = saveSpot(place);
+      toast('내 여행지로 저장했어요. 방문 기록과 메모를 남길 수 있어요.');
+      location.replace(`#/place/${id}`);
     }));
-    root.querySelector('#pick-add').addEventListener('click', () => openPickForm());
     root.querySelector('#plan-toggle').addEventListener('click', (e) => {
       const on = togglePlan(place.id);
       e.currentTarget.textContent = on ? '✓ 내 일정에 담김' : '🧳 내 일정에 담기';
@@ -205,13 +326,19 @@ export function renderDetail(root, placeId) {
       toast('여행지를 지웠어요');
       location.hash = '#/list';
     });
-    root.querySelector('#pamphlet').addEventListener('click', () => openPamphletSheet({
-      title: `${place.name} 여행`,
-      season: seasonOf(new Date().getMonth() + 1),
-      mode: null,
-      oneWay: null,
-      days: [[{ id: place.id }]],
-    }));
+    // 홈에서 고른 여행 기간·출발지로 이곳 하나만 담은 일정을 만든다
+    root.querySelector('#pamphlet').addEventListener('click', () => {
+      const origin = planOrigin();
+      const c = planCourse([{ ...state.guide[place.id], ...place }], plan.tripKey, origin);
+      openPamphletSheet({
+        title: `${place.name} ${TRIPS[plan.tripKey].label}`,
+        season: seasonOf(new Date((trip.startDate || Date.now())).getMonth() + 1),
+        mode: c?.mode ?? null,
+        oneWay: c?.oneWay ?? null,
+        originName: origin.name,
+        days: c ? c.days.map((d) => d.map((x) => ({ id: x.id, leg: x.leg }))) : [[{ id: place.id }]],
+      });
+    });
     drawPicks();
 
     root.querySelector('#check')?.addEventListener('click', () => openSheet(null));
@@ -446,6 +573,9 @@ export function renderDetail(root, placeId) {
   }
 
   draw();
+  if (isSpot(place) && !state.info.items[place.id]) {
+    refreshOnePlace(place.id).then((found) => { if (found && alive) draw(); });
+  }
 
   return () => {
     alive = false;

@@ -104,7 +104,7 @@ function placeCard(s, { season, includePicks }) {
  *         days: [[{ ...place, guide, picks, leg }]] }
  */
 export function buildPamphlet(spec) {
-  const { title, startDate, members = [], note, season, mode, oneWay, originName, days } = spec;
+  const { title, startDate, members = [], note, season, mode, oneWay, originName, days, people } = spec;
   const range = dateRange(startDate, days.length);
   const places = days.flat();
   const travel = mode === 'air' ? '✈️ 항공 이동'
@@ -196,7 +196,8 @@ footer { margin-top:32px; color:var(--ink2); font-size:12px; text-align:center; 
 
   <section class="summary">
     <div><b>${days.length > 1 ? `${days.length - 1}박 ${days.length}일` : '당일'}</b><span>일정</span></div>
-    <div><b>${places.length}곳</b><span>${places.every((p) => !p.custom) ? '한국관광 100선' : '여행지'}</span></div>
+    ${people || members.length ? `<div><b>${Math.max(people || 0, members.length)}명</b><span>인원</span></div>` : ''}
+    <div><b>${places.length}곳</b><span>${places.every((p) => !p.custom && !p.spot) ? '한국관광 100선' : '여행지'}</span></div>
     ${places.some((p) => p.guide?.hours) ? `<div><b>약 ${fmtHours(places.reduce((s, p) => s + (p.guide?.hours || 0), 0))}</b><span>관광 시간 합계</span></div>` : ''}
   </section>
 

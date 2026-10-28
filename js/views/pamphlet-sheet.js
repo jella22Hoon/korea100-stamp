@@ -3,6 +3,7 @@ import { getPicks } from '../db.js';
 import { buildPamphlet } from '../pamphlet.js';
 import { esc, today, toast, downloadFile, storage } from '../util.js';
 import { enrichPlaces } from '../enrich.js';
+import { trip } from '../trip.js';
 
 const MEMBERS_KEY = 'korea100.members';
 
@@ -28,7 +29,7 @@ export function openPamphletSheet(course) {
       </label>
       <label class="field">
         <span>출발일 (선택)</span>
-        <input type="date" name="startDate" min="${today()}">
+        <input type="date" name="startDate" min="${today()}" value="${trip.startDate >= today() ? esc(trip.startDate) : ''}">
       </label>
       <label class="field">
         <span>함께 가는 사람 (쉼표로 구분, 선택)</span>
@@ -110,6 +111,7 @@ export function openPamphletSheet(course) {
     const html = buildPamphlet({
       title,
       startDate: fd.get('startDate') || '',
+      people: trip.people,
       members,
       note: String(fd.get('note')).trim(),
       season: course.season,
