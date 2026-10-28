@@ -15,7 +15,7 @@ function cardHtml(s, dest) {
   const id = s.placeId || state.spots.find((x) => x.key?.startsWith(`${s.wikiTitle || s.name}|`))?.id;
   const on = id && inPlan(id);
   const badge = s.official ? '<span class="badge-100">🏅 100선</span>' : s.custom ? '<span class="badge-mine">내 여행지</span>' : '';
-  const dist = s.rough ? '' : s.dist < 1 ? '1km 이내' : `${dest.name === '내 주변' ? '여기서' : '중심에서'} 약 ${Math.round(s.dist)}km`;
+  const dist = s.rough ? '' : s.dist < 1 ? '1km 이내' : `${dest.near ? '출발지에서' : '중심에서'} 약 ${Math.round(s.dist)}km`;
   const meta = [s.kindLabel || s.category, dist, s.source].filter(Boolean).join(' · ');
   return `
     <li class="spot${s.official ? ' official' : ''}">
@@ -41,7 +41,7 @@ export function renderExplore(root) {
   root.innerHTML = `
     <a class="back" href="#/home"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg> 조건 바꾸기</a>
     <header class="page-head">
-      <h1 id="ex-title">${trip.dest ? `${esc(trip.dest)} 여행지` : '내 주변 여행지'}</h1>
+      <h1 id="ex-title">${trip.dest ? `${esc(trip.dest)} 여행지` : `${esc(origin.name)} 주변 여행지`}</h1>
       <p class="sub">${summary.map(esc).join(' · ')}</p>
     </header>
     <div class="ex-search" id="ex-search"></div>
@@ -99,8 +99,8 @@ export function renderExplore(root) {
   }
 
   function showDest() {
-    const near = dest.name === '내 주변';
-    root.querySelector('#ex-title').textContent = near ? `내 주변 여행지${dest.sigungu ? ` · ${dest.sigungu}` : ''}` : `${dest.name} 여행지`;
+    const near = !!dest.near;
+    root.querySelector('#ex-title').textContent = near ? `${dest.name} 주변 여행지` : `${dest.name} 여행지`;
     showSearch(near ? (dest.sigungu || '근처') : dest.name);
     // 출발지에서 목적지까지 차로 얼마나 걸리는지 한 줄 덧붙인다
     if (!near) {
@@ -118,7 +118,7 @@ export function renderExplore(root) {
 
   (async () => {
     try {
-      dest = await resolveDest(trip.dest);
+      dest = await resolveDest(trip.dest, origin);
     } catch (err) {
       status.innerHTML = trip.dest
         ? `${esc(err.message || '목적지를 찾지 못했어요')}. 지역 이름(예: 강릉, 경주)이나 관광지 이름으로 다시 찾아 주세요. <a href="#/home">조건 바꾸기</a>`

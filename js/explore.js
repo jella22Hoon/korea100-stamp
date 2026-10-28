@@ -163,17 +163,22 @@ async function osmNearby(center, radiusKm) {
 }
 
 /**
- * 목적지 글자를 위치로 바꾼다. 비어 있으면 현재 위치.
- * → { name, lat, lng, sido, sigungu, placeId? }
+ * 목적지 글자를 위치로 바꾼다. 비어 있으면 출발지 주변, 출발지도 없으면 현재 위치 주변.
+ * → { name, lat, lng, sido, sigungu, near?, placeId? }
  */
-export async function resolveDest(text) {
+export async function resolveDest(text, origin = null) {
   const q = text.trim();
   if (!q) {
-    const pos = await new Promise((ok, fail) => {
-      if (!navigator.geolocation || !window.isSecureContext) fail(new Error('위치를 쓸 수 없어요'));
-      else navigator.geolocation.getCurrentPosition(ok, fail, { timeout: 15000, maximumAge: 60000 });
-    });
-    const here = { name: '내 주변', lat: pos.coords.latitude, lng: pos.coords.longitude, sido: '', sigungu: '' };
+    let here;
+    if (Number.isFinite(origin?.lat)) {
+      here = { name: origin.name, lat: origin.lat, lng: origin.lng, sido: '', sigungu: '', near: true };
+    } else {
+      const pos = await new Promise((ok, fail) => {
+        if (!navigator.geolocation || !window.isSecureContext) fail(new Error('위치를 쓸 수 없어요'));
+        else navigator.geolocation.getCurrentPosition(ok, fail, { timeout: 15000, maximumAge: 60000 });
+      });
+      here = { name: '내 주변', lat: pos.coords.latitude, lng: pos.coords.longitude, sido: '', sigungu: '', near: true };
+    }
     const rev = await getJSON(`https://nominatim.openstreetmap.org/reverse?${new URLSearchParams({ lat: here.lat, lon: here.lng, format: 'jsonv2', 'accept-language': 'ko', zoom: 10 })}`).catch(() => null);
     if (rev?.address) Object.assign(here, regionOf(rev.address, rev.display_name));
     if (!here.sido) here.sido = nearestSido(here);

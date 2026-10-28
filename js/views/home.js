@@ -2,7 +2,7 @@
 import { allPlaces } from '../store.js';
 import { esc, today } from '../util.js';
 import { TRIPS } from '../recommend.js';
-import { plan, originOptions, setPlanOrigin } from '../plan.js';
+import { plan, originOptions, setPlanOrigin, planOrigin } from '../plan.js';
 import { trip, saveTrip } from '../trip.js';
 import { openOriginSheet } from './origin-sheet.js';
 
@@ -18,7 +18,7 @@ export function renderHome(root) {
         <label class="home-dest">
           <span class="sr-only">가고 싶은 곳</span>
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-          <input type="search" name="dest" list="home-dest-list" maxlength="40" value="${esc(trip.dest)}" placeholder="가고 싶은 곳 (비워 두면 내 주변)" enterkeyhint="search">
+          <input type="search" name="dest" list="home-dest-list" maxlength="40" value="${esc(trip.dest)}" placeholder="가고 싶은 곳 (비워 두면 출발지 주변)" enterkeyhint="search">
           <datalist id="home-dest-list">${names.map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
         </label>
         <div class="home-grid">
@@ -51,7 +51,7 @@ export function renderHome(root) {
   const go = root.querySelector('#home-go');
   const label = () => {
     const d = form.elements.dest.value.trim();
-    go.textContent = d ? `🔍 '${d}' 여행지 추천받기` : '📍 내 주변 관광지 추천받기';
+    go.textContent = d ? `🔍 '${d}' 여행지 추천받기` : `📍 '${planOrigin().name}' 주변 여행지 추천받기`;
   };
   label();
 
@@ -63,7 +63,10 @@ export function renderHome(root) {
     saveTrip({ people: n });
     form.elements.people.value = `${n}명`;
   }));
-  const pickOnMap = () => openOriginSheet(() => { form.elements.origin.innerHTML = originOptions(); });
+  const pickOnMap = () => openOriginSheet(() => {
+    form.elements.origin.innerHTML = originOptions();
+    label();
+  });
   root.querySelector('#home-map').addEventListener('click', pickOnMap);
   form.elements.origin.addEventListener('change', (e) => {
     if (e.target.value === '__search') {
@@ -72,6 +75,7 @@ export function renderHome(root) {
       return;
     }
     setPlanOrigin(e.target.value);
+    label();
   });
 
   form.addEventListener('submit', (e) => {
