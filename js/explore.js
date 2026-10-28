@@ -9,7 +9,7 @@ const WIKI = 'https://ko.wikipedia.org/w/api.php';
 const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
 
 // 여행 기간이 길수록 넓게 찾는다(목적지 중심에서 km)
-export const RADIUS = { day: 12, '1n2d': 25, '2n3d': 35, '3n4d': 45 };
+export const RADIUS = { day: 36, '1n2d': 75, '2n3d': 105, '3n4d': 135 };
 
 const SIDO_NAMES = {
   서울: ['서울특별시'], 부산: ['부산광역시'], 대구: ['대구광역시'], 인천: ['인천광역시'], 광주: ['광주광역시'],
@@ -86,27 +86,29 @@ const PAGE_PROPS = { prop: 'categories|description|coordinates|pageimages', clli
 
 // 위키백과 위치 검색(한 번에 반경 10km까지라 넓으면 주변 여러 지점을 함께 찾는다)
 async function wikiNearby(center, radiusKm, onBatch) {
+  // 가운데 + 둘레 6곳(한 지점은 반경 10km까지만 찾는다). 더 먼 곳은 시·군별 '관광지' 분류(wikiRegions)로 채운다
   const pts = [center];
-  if (radiusKm > 12) {
-    const off = Math.min(radiusKm * 0.55, 16);
-    for (let i = 0; i < 6; i++) {
-      const a = (Math.PI / 3) * i;
-      pts.push({ lat: center.lat + (off / 111) * Math.sin(a), lng: center.lng + (off / (111 * Math.cos((center.lat * Math.PI) / 180))) * Math.cos(a) });
-    }
+  const off = Math.min(radiusKm * 0.3, 18);
+  for (let i = 0; i < 6; i++) {
+    const a = (Math.PI / 3) * i;
+    pts.push({ lat: center.lat + (off / 111) * Math.sin(a), lng: center.lng + (off / (111 * Math.cos((center.lat * Math.PI) / 180))) * Math.cos(a) });
   }
   // 도심은 관공서·학교 문서가 많아 가운데는 넉넉히 받고, 제목만 보고 걸러 낸 뒤 분류·사진을 50개씩 묻는다.
   // 지점마다 찾은 것을 바로 onBatch로 넘겨 화면에 먼저 보여 준다
   const seen = new Set();
   const out = [];
-  // 위치 검색은 한꺼번에 보내면 '검색이 바쁘다'며 거절하므로 하나씩, 거절되면 잠시 뒤 다시 보낸다
+  // 위치 검색은 한꺼번에 보내면 '검색이 바쁘다'며 거절하므로 하나씩 보내고, 거절되면 잠시 뒤 한 번 더.
+  // 두 지점 연달아 실패하면 서버가 바쁜 것이라 그만 묻는다(오래 기다리지 않게)
+  let fails = 0;
   for (const [i, p] of pts.entries()) {
+    if (fails >= 2) break;
     const url = wikiURL({ action: 'query', list: 'geosearch', gscoord: `${p.lat}|${p.lng}`, gsradius: 10000, gslimit: i === 0 ? 300 : 80 });
     let r = await getJSON(url).catch(() => null);
-    for (const wait of [900, 1800]) {
-      if (r?.query) break;
-      await new Promise((ok) => setTimeout(ok, wait));
+    if (!r?.query) {
+      await new Promise((ok) => setTimeout(ok, 900));
       r = await getJSON(url).catch(() => null);
     }
+    fails = r?.query ? 0 : fails + 1;
     const pos = new Map(); // 위치 검색이 준 좌표(문서 정보에 좌표가 빠졌을 때 쓴다)
     for (const g of r?.query?.geosearch || []) {
       if (seen.has(g.pageid) || (anyPart(BAD, g.title) && !anyPart(GOOD, g.title))) continue;
@@ -131,6 +133,18 @@ async function wikiCategory(region, center) {
     action: 'query', generator: 'categorymembers', gcmtitle: `분류:${region}의 관광지`, gcmtype: 'page', gcmlimit: 50, ...PAGE_PROPS,
   })).catch(() => null);
   return (r?.query?.pages || []).map((p) => ({ ...wikiPage(p, center), good: true, tour: true, bad: ARTIFACT.test(p.title) || anyPart(ARTIFACT_CAT, (p.categories || []).map((c) => c.title.replace(/^분류:/, '')).join(' / ')) }));
+}
+
+// 반경 안 시·군마다 '○○시의 관광지' 분류를 찾는다(관광지만 모인 분류라 넓은 범위를 적은 요청으로 채운다)
+async function wikiRegions(regions, onBatch) {
+  const out = [];
+  for (let i = 0; i < regions.length; i += 3) {
+    const rs = await Promise.all(regions.slice(i, i + 3).map(([name, at]) => wikiCategory(name, at).catch(() => [])));
+    const items = rs.flat();
+    out.push(...items);
+    if (items.length) onBatch?.(items);
+  }
+  return out;
 }
 
 // 오픈스트리트맵 관광지. 서버가 바쁘면 자주 늦어서 짧게 기다리고 못 받으면 넘어간다
@@ -277,14 +291,23 @@ export async function findSpots(dest, radiusKm, onPartial) {
     const rank = (s) => (s.official ? 0 : s.custom ? 1 : s.minor ? 6 : s.tour ? 2 : s.image ? 3 : s.wikiTitle ? 4 : 5);
     const sorted = all.sort((a, b) => rank(a) - rank(b) || a.dist - b.dist);
     const minorCap = 6;
-    return sorted.filter((x) => !x.minor || sorted.filter((y) => y.minor).indexOf(x) < minorCap).slice(0, 36);
+    return sorted.filter((x) => !x.minor || sorted.filter((y) => y.minor).indexOf(x) < minorCap).slice(0, 50);
   };
   onPartial?.(finish([]));
-  const region = dest.sigungu && /(시|군)$/.test(dest.sigungu) ? dest.sigungu : '';
+  // 목적지가 있는 시·군과 반경 안 100선·내 여행지의 시·군(가까운 순, 최대 12곳). 좌표 없는 문서는 그 관광지 근처로 둔다
+  const regions = new Map();
+  if (dest.sigungu && /(시|군)$/.test(dest.sigungu)) regions.set(dest.sigungu, center);
+  [...allPlaces()].map((p) => ({ p, area: state.guide[p.id]?.area })).filter((x) => x.area)
+    .map((x) => ({ ...x, d: km(here, x.area) })).filter((x) => x.d <= radiusKm).sort((a, b) => a.d - b.d)
+    .forEach(({ p, area }) => {
+      const sg = String(p.sigungu || '').split(/[\s,·]+/)[0];
+      if (/(시|군)$/.test(sg) && !regions.has(sg)) regions.set(sg, { lat: area[0], lng: area[1] });
+    });
   const ext = [];
+  const add = (r) => { ext.push(...r); onPartial?.(finish(ext)); };
   const jobs = [
-    wikiNearby(center, radiusKm, (r) => { ext.push(...r); onPartial?.(finish(ext)); }).catch(() => {}),
-    wikiCategory(region, center).then((r) => { ext.push(...r); onPartial?.(finish(ext)); }).catch(() => {}),
+    wikiNearby(center, radiusKm, add).catch(() => {}),
+    wikiRegions([...regions].slice(0, 12), add).catch(() => {}),
     osmNearby(center, radiusKm).then((r) => { ext.push(...r); onPartial?.(finish(ext)); }).catch(() => {}),
   ];
   await Promise.all(jobs);
